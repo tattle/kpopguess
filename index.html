@@ -4,36 +4,33 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <meta name="referrer" content="origin" />
-<title>K-Pop MV Guess — No-API MVP</title>
+<title>K-Pop MV Guess — 60s</title>
 <style>
-  :root{ --r:14px; }
-  *{ box-sizing:border-box; }
-  html,body{ margin:0; padding:0; background:#000; color:#fff; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif; }
-  .wrap{ min-height:100svh; max-width:960px; margin:0 auto; padding:3vw; display:flex; flex-direction:column; }
-  h1{ margin:.2rem 0 1rem; font-size:clamp(16px,4.5vw,22px) }
-  .hud{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:10px }
-  .pill{ background:#111; border-radius:999px; text-align:center; padding:10px 12px; font-weight:800; font-size:clamp(12px,3.2vw,15px) }
-
-  .stage{ position:relative; width:100%; aspect-ratio:16/9; background:#000; border-radius:12px; overflow:hidden }
-  #player{ position:absolute; inset:0 }
-  .mask-top{ position:absolute; left:0; right:0; top:0; height:15%; background:#000; pointer-events:none }
-  .overlay{ position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.55); z-index:3 }
-  .overlay button{ border:none; background:#fff; color:#000; border-radius:12px; padding:10px 16px; font-weight:700; cursor:pointer; font-size:clamp(16px,4.2vw,20px)}
-
-  .choices{ display:grid; gap:10px; margin-top:12px }
-  .choice{ border:none; background:#1a1a1a; color:#fff; border-radius:12px; padding:12px 14px; text-align:left; font-size:clamp(13px,3.2vw,16px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; border:1px solid #333; }
-  .choice:disabled{ opacity:.85 }
-  .choice.correct{ background:#2e7d32 }
-  .choice.wrong{ background:#b71c1c }
-
-  .bar{ display:flex; gap:12px; margin-top:10px; }
-  .btn{ border:none; background:#fff; color:#000; border-radius:12px; padding:10px 16px; font-weight:700; cursor:pointer; }
-  .btn:disabled{ opacity:.65; cursor:not-allowed }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:#000;color:#fff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif}
+  .wrap{min-height:100svh;max-width:960px;margin:0 auto;padding:3vw;display:flex;flex-direction:column}
+  h1{margin:.2rem 0 .6rem;font-size:clamp(16px,4.5vw,22px)}
+  .hud{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8px}
+  .pill{background:#111;border-radius:14px;padding:.7rem 0;text-align:center;font-weight:800;font-size:clamp(12px,3.2vw,15px)}
+  .stage{position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:12px;overflow:hidden}
+  .mask-top{position:absolute;left:0;right:0;top:0;height:15%;background:#000;pointer-events:none}
+  .overlay,.loading{position:absolute;inset:0;display:none;align-items:center;justify-content:center}
+  .overlay{background:rgba(0,0,0,.55);z-index:3}
+  .overlay button,.bar .btn{border:none;background:#fff;color:#000;border-radius:12px;padding:10px 16px;font-weight:700;cursor:pointer}
+  .loading{background:rgba(0,0,0,.4);z-index:2}
+  .choices{display:grid;gap:10px;margin-top:12px}
+  .choice{border:.3vw solid #333;background:#111;color:#fff;border-radius:12px;padding:12px 14px;text-align:left;font-size:clamp(13px,3.2vw,16px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .choice.correct{background:#2e7d32}
+  .choice.wrong{background:#b71c1c}
+  .bar{display:flex;gap:10px;margin-top:10px;align-items:center}
+  .btn{border:none;background:#fff;color:#000;border-radius:12px;padding:10px 16px;font-weight:700;cursor:pointer}
+  .btn:disabled{opacity:.6;cursor:not-allowed}
+  .title{margin-left:auto;opacity:.9;font-size:.9rem}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>🎵 K-Pop MV Guess — MVP</h1>
+  <h1>🎵 K-Pop MV Guess — 60s</h1>
 
   <div class="hud">
     <div class="pill">⏱ <span id="time">60</span>s</div>
@@ -42,8 +39,9 @@
   </div>
 
   <div class="stage">
-    <div id="player"></div>
+    <div id="player" style="position:absolute;inset:0"></div>
     <div class="mask-top"></div>
+    <div id="loading" class="loading"><div>Loading…</div></div>
     <div id="tap" class="overlay"><button id="tapBtn">Tap to start</button></div>
   </div>
 
@@ -52,170 +50,251 @@
   <div class="bar">
     <button id="startBtn" class="btn">Start 60s</button>
     <button id="nextBtn" class="btn" disabled>Next</button>
+    <span id="mvTitle" class="title"></span>
   </div>
 </div>
 
 <!-- YouTube IFrame API -->
 <script src="https://www.youtube.com/iframe_api"></script>
 <script>
-/* ====== Fallback K-Pop pool (no API required) ====== */
-const MV_POOL = [
-  {id:"IHNzOHi8sJs", title:"BLACKPINK – DDU-DU DDU-DU"},
-  {id:"gdZLi9oWNZg", title:"BLACKPINK – How You Like That"},
-  {id:"gOsM-DYAEhY", title:"TWICE – Feel Special"},
-  {id:"fE2h3lGlOsk", title:"ITZY – WANNABE"},
-  {id:"eXbu8dD1zNI", title:"IVE – I AM"},
-  {id:"sVTy_wmn5SU", title:"NewJeans – Super Shy"},
-  {id:"wTOP-nRZ5Jk", title:"SEVENTEEN – Super"},
-  {id:"WPdWvnAAurg", title:"LE SSERAFIM – ANTIFRAGILE"},
-  {id:"ry3S5H3p8wE", title:"aespa – Savage"},
-  {id:"_bw4Z8VQGDY", title:"(G)I-DLE – Nxde"},
-  {id:"pSU6Z2Zf0_0", title:"BTS – Dynamite"},
-  {id:"Vi7qH-LEhWU", title:"Stray Kids – LALALALA"},
-];
+/** === CONFIG: put your YouTube Data API v3 key here === */
+const YT_API_KEY = "AIzaSyDBB3J-vwLYe8Enbmi6SmNCB5NW4QJv5Dc";
 
-/* ====== Minimal state ====== */
+/** === State === */
 let player, ready=false, userGesture=false;
 let timeLeft=60, timerId=null;
-let totalCorrect=0, totalQuestions=0;
-let current=null; // {videoId,title,t,options[],correctIndex}
-let recent=[]; const RECENT_MAX=40;
+let totalQuestions=0, totalCorrect=0;
+let current=null; // {videoId, duration, t, correctTitle, options[4], correctIndex}
+let poolCache=[]; // candidate pool for building distractors
+const recent=[]; const RECENT_MAX=40;
 
 const $ = id => document.getElementById(id);
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
-const shuffle = a => { const x=a.slice(); for(let i=x.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [x[i],x[j]]=[x[j],x[i]] } return x; };
-const clamp = (x,a,b)=> Math.max(a, Math.min(b,x));
+const shuffle = a => {const x=a.slice(); for(let i=x.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [x[i],x[j]]=[x[j],x[i]]} return x;};
+const clamp = (x,a,b)=>Math.max(a,Math.min(b,x));
 function setHUD(){ $("time").textContent=timeLeft; $("correct").textContent=totalCorrect; $("questions").textContent=totalQuestions; }
+function showLoading(on){ $("loading").style.display = on?"flex":"none"; }
 function pushRecent(id){ recent.push(String(id)); if(recent.length>RECENT_MAX) recent.shift(); }
 
-/* ====== YouTube IFrame setup ====== */
+/** === Minimal hardcoded fallback (if API fails) === */
+const FALLBACK = shuffle([
+  {id:"IHNzOHi8sJs", title:"BLACKPINK – DDU-DU DDU-DU", duration:210},
+  {id:"gdZLi9oWNZg", title:"BLACKPINK – How You Like That", duration:200},
+  {id:"gOsM-DYAEhY", title:"TWICE – Feel Special", duration:214},
+  {id:"fE2h3lGlOsk", title:"ITZY – WANNABE", duration:232},
+  {id:"eXbu8dD1zNI", title:"IVE – I AM", duration:210},
+  {id:"sVTy_wmn5SU", title:"NewJeans – Super Shy", duration:161},
+  {id:"wTOP-nRZ5Jk", title:"SEVENTEEN – Super", duration:232},
+  {id:"WPdWvnAAurg", title:"LE SSERAFIM – ANTIFRAGILE", duration:200},
+  {id:"ry3S5H3p8wE", title:"aespa – Savage", duration:239}
+]);
+
+/** === IFrame API hook === */
 function onYouTubeIframeAPIReady(){
   player = new YT.Player("player", {
     host:"https://www.youtube.com",
     width:"100%", height:"100%", videoId:"",
-    playerVars:{ origin: location.origin, autoplay:1, mute:1, playsinline:1, controls:0, rel:0, modestbranding:1 },
+    playerVars:{ origin:location.origin, autoplay:1, mute:1, playsinline:1, controls:0, rel:0, modestbranding:1 },
     events:{
-      onReady: ()=>{ ready=true; maybeShowTap(); },
-      onError: ()=>{ // skip bad video
-        nextQuestion();
+      onReady: () => { ready=true; maybeAutostart(); },
+      onError: () => { // skip problematic video fast
+        startRound();
       }
     }
   });
 }
 
-function maybeShowTap(){
+function maybeAutostart(){
   const isiOS = /(iPhone|iPad|iPod)/i.test(navigator.userAgent);
   if (isiOS && !userGesture) $("tap").style.display="flex";
 }
 
-/* ====== 1) Build a question: pick MV, random second, pause ====== */
-function pickMV(){
-  // avoid immediate repeats
-  const pool = MV_POOL.filter(v=> !recent.includes(v.id));
-  if (!pool.length) pool.push(...MV_POOL);
+/** === API helpers === */
+async function gapi(url){
+  const res = await fetch(url);
+  if(res.ok) return res.json();
+  throw new Error(`HTTP ${res.status}`);
+}
+const isoToSec = iso => {const m=(iso||"").match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/); if(!m)return 0; return (+m[1]||0)*3600+(+m[2]||0)*60+(+m[3]||0);};
+
+/** === Fetch a candidate pool (embeddable/non-short) === */
+async function fetchPool(){
+  const u = new URL("https://www.googleapis.com/youtube/v3/search");
+  u.searchParams.set("key", YT_API_KEY);
+  u.searchParams.set("part","snippet");
+  u.searchParams.set("type","video");
+  u.searchParams.set("maxResults","50");
+  u.searchParams.set("videoEmbeddable","true");
+  u.searchParams.set("videoSyndicated","true");
+  u.searchParams.set("videoDuration","medium,long");
+  u.searchParams.set("q","K-Pop official MV 공식 뮤직비디오 아이돌 K-POP");
+
+  let s;
+  try{ s = await gapi(u.toString()); }catch(e){ return FALLBACK.slice(); }
+
+  const looksLikeMV = (t="",d="",c="")=>{
+    const IN = /(official(?!\s*audio)|music\s*video|mv|공식|뮤직비디오|官方|完整版)/i.test(t)
+            || /(official(?!\s*audio)|music\s*video|mv|공식|뮤직비디오|官方)/i.test(d)
+            || /official|vevo/i.test(c);
+    const EX = /(lyric|lyrics|歌詞|자막|dance|practice|mirror|cover|reaction|live|現場|舞台|직캠|fancam|teaser|trailer|audio|visualizer|shorts|topic)/i;
+    return IN && !EX.test(t) && !EX.test(d) && !/topic/i.test(c);
+  };
+
+  let prelim = (s.items||[])
+    .map(i=>({ id:i.id?.videoId, title:i.snippet?.title||"", desc:i.snippet?.description||"", channel:i.snippet?.channelTitle||"" }))
+    .filter(v => v.id && looksLikeMV(v.title,v.desc,v.channel) && !recent.includes(v.id));
+
+  if (!prelim.length) return FALLBACK.slice();
+
+  const ids = prelim.map(v=>v.id).join(",");
+  const v = new URL("https://www.googleapis.com/youtube/v3/videos");
+  v.searchParams.set("key", YT_API_KEY);
+  v.searchParams.set("part","contentDetails,snippet,status,contentRating");
+  v.searchParams.set("id", ids);
+
+  let j;
+  try{ j = await gapi(v.toString()); }catch(e){ return FALLBACK.slice(); }
+
+  const myCC = (Intl?.DateTimeFormat?.().resolvedOptions?.().locale||"en-US").split("-").pop()?.toUpperCase() || "TW";
+  let pool = (j.items||[]).map(x=>{
+    const dur = isoToSec(x.contentDetails?.duration);
+    const rr = x.contentDetails?.regionRestriction || {};
+    const emb = x.status?.embeddable !== false;
+    const age = (x.contentRating?.ytRating||"") === "ytAgeRestricted";
+    const blocked = Array.isArray(rr.blocked)? rr.blocked : [];
+    const allowed = Array.isArray(rr.allowed)? rr.allowed : null;
+    const regionOK = (!blocked.includes(myCC)) && (!allowed || allowed.includes(myCC));
+    return { id:x.id, title:x.snippet?.title||"", duration:dur, embeddable:emb, regionOK, age };
+  }).filter(z => z.embeddable && z.regionOK && !z.age && z.duration >= 120);
+
+  if (!pool.length) return FALLBACK.slice();
+  return shuffle(pool).slice(0,24);
+}
+
+/** === Build ONE question from a pool ===
+ * 1) pick a correct MV
+ * 2) create 3 distractor titles
+ * 3) pick random time 5%~95% and pause there
+ */
+function buildQuestion(pool){
   const correct = pool[Math.floor(Math.random()*pool.length)];
-  pushRecent(correct.id);
+  const correctTitle = correct.title;
 
-  // 3 fake options
-  const others = shuffle(MV_POOL.filter(x=>x.id!==correct.id)).slice(0,3).map(x=>x.title);
-  const options = shuffle([correct.title, ...others]);
-  const correctIndex = options.findIndex(t => t === correct.title);
+  const distractors = shuffle(pool.filter(x=>x.id!==correct.id)).slice(0,3).map(x=>x.title);
+  const options = shuffle([correctTitle, ...distractors]);
+  const correctIndex = options.findIndex(t => t && t.toLowerCase()===correctTitle.toLowerCase());
 
-  // pick a random second within 5%~95% (assume common MV length ≈ 3:00 → 180s fallback)
-  const estDuration = 180; // no API, so we estimate; still looks random enough
-  const start = Math.floor(estDuration * 0.05);
-  const end   = Math.ceil (estDuration * 0.95);
-  const t = clamp(Math.floor(start + Math.random()*(end-start)), 1, estDuration-1);
+  const start = Math.floor(correct.duration*0.05);
+  const end   = Math.ceil(correct.duration*0.95);
+  const t = clamp(Math.floor(start + Math.random()*(end-start)), 1, Math.max(1, correct.duration-1));
 
-  return { videoId:correct.id, title:correct.title, t, options, correctIndex };
+  return { videoId:correct.id, duration:correct.duration, t, correctTitle, options, correctIndex };
 }
 
-/* Load, jump, and pause */
-async function loadAndFreeze(q){
-  try { player.loadVideoById(q.videoId); } catch {}
-  // Nudge play on iOS, then seek and pause
-  for (let i=0;i<30;i++){
-    const s = player.getPlayerState?.();
-    if (s === 1 || s === 2){ // playing or paused
-      try{
-        player.seekTo(q.t, true);
-        setTimeout(()=> player.pauseVideo(), 120);
-      }catch{}
-      return true;
+/** === GAME LOOP === */
+function startGame(){
+  if (!ready){ alert("YouTube is loading—try again in a second."); return; }
+  userGesture = true;
+  $("tap").style.display="none";
+
+  // reset
+  timeLeft=60; totalQuestions=0; totalCorrect=0; setHUD();
+  if (timerId) clearInterval(timerId);
+  timerId = setInterval(()=>{
+    timeLeft--; setHUD();
+    if (timeLeft<=0){
+      clearInterval(timerId); timerId=null;
+      $("nextBtn").disabled=true;
+      alert(`Time's up! ✅ Correct: ${totalCorrect} / Questions: ${totalQuestions}`);
     }
-    try{ player.playVideo(); }catch{}
-    await sleep(100);
-  }
-  return false;
+  },1000);
+
+  // clear UI
+  $("mvTitle").textContent="";
+  $("choices").innerHTML="";
+  $("nextBtn").disabled=true;
+
+  // prime a pool for this run
+  poolCache.length = 0;
+  startRound();
 }
 
-/* ====== 2) Render options & handle answer ====== */
+async function startRound(){
+  if (timeLeft<=0) return;
+  showLoading(true);
+  try{
+    if (!poolCache.length) poolCache = await fetchPool();
+    // build a question
+    const q = buildQuestion(poolCache);
+    current = q; totalQuestions++; setHUD();
+    pushRecent(q.videoId);
+
+    // load the video, seek to random second, and pause there
+    $("mvTitle").textContent = ""; // keep answer hidden
+    player.loadVideoById(q.videoId);
+
+    let controlled=false;
+    for (let i=0;i<35;i++){
+      const st = player.getPlayerState?.();
+      if (st===1 || st===2){ // PLAYING or PAUSED
+        try{
+          player.seekTo(q.t, true);
+          setTimeout(()=> player.pauseVideo(), 120);
+        }catch{}
+        controlled=true; break;
+      }
+      try{ player.playVideo(); }catch{}
+      await sleep(100);
+    }
+    if(!controlled && !userGesture){
+      $("tap").style.display="flex";
+      return;
+    }
+
+    // render choices
+    renderChoices(q);
+    $("nextBtn").disabled = true;
+  }catch(e){
+    // any error → try new pool or fallback
+    console.warn(e);
+    poolCache = [];
+    await sleep(150);
+    return startRound();
+  }finally{
+    showLoading(false);
+  }
+}
+
+/** === RENDER & ANSWER === */
 function renderChoices(q){
   const box = $("choices");
-  box.innerHTML = "";
+  box.innerHTML="";
   q.options.forEach((title, i)=>{
     const btn = document.createElement("button");
     btn.className = "choice";
     btn.textContent = `${String.fromCharCode(65+i)}. ${title}`;
-    btn.onclick = ()=> choose(i, btn);
+    btn.onclick = () => choose(i, btn);
     box.appendChild(btn);
   });
-  $("nextBtn").disabled = true;
 }
-
 function choose(i, btn){
-  // disable all
   [...document.querySelectorAll(".choice")].forEach(b=> b.disabled=true);
-  if (i === current.correctIndex){
+  if (i===current.correctIndex){
     totalCorrect++;
     btn.classList.add("correct");
   }else{
     btn.classList.add("wrong");
-    const okBtn = document.querySelectorAll(".choice")[current.correctIndex];
-    okBtn.classList.add("correct");
+    const ok = document.querySelectorAll(".choice")[current.correctIndex];
+    ok.classList.add("correct");
   }
   setHUD();
-  $("nextBtn").disabled = false;
+  $("nextBtn").disabled=false;
 }
 
-/* ====== 3) 60s game loop ====== */
-function startGame(){
-  if (!ready){ alert("YouTube is loading, try again."); return; }
-  userGesture = true;
-  $("tap").style.display="none";
-
-  // reset stats & timer
-  timeLeft = 60; totalCorrect = 0; totalQuestions = 0; setHUD();
-  if (timerId) clearInterval(timerId);
-  timerId = setInterval(()=>{
-    timeLeft--; setHUD();
-    if (timeLeft <= 0){
-      clearInterval(timerId); timerId=null;
-      alert(`Time's up!\nCorrect: ${totalCorrect}\nQuestions: ${totalQuestions}`);
-      $("nextBtn").disabled = true;
-    }
-  }, 1000);
-
-  nextQuestion();
-}
-
-async function nextQuestion(){
-  if (timeLeft <= 0) return;
-  current = pickMV();
-  totalQuestions++; setHUD();
-
-  // load & freeze random frame
-  const ok = await loadAndFreeze(current);
-  if (!ok){ // if failed to control playback, try another quickly
-    return nextQuestion();
-  }
-  renderChoices(current);
-}
-
-/* ====== UI Events ====== */
+/** === UI events === */
 $("startBtn").onclick = () => startGame();
-$("nextBtn").onclick  = () => nextQuestion();
-$("tapBtn").onclick   = () => { userGesture = true; $("tap").style.display="none"; startGame(); };
+$("nextBtn").onclick  = () => startRound();
+$("tapBtn").onclick   = () => { userGesture=true; $("tap").style.display="none"; startGame(); };
 </script>
 </body>
 </html>
