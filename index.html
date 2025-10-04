@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-<title>K-Pop Guess · Auto Start</title>
+<title>K-Pop Guess · Auto Start (Embeddable Safe)</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <style>
@@ -61,8 +61,8 @@
 </div>
 
 <script>
-/* 你的 YouTube Data API v3 Key（建議在 GCP 限制 HTTP 來源到你的網域） */
-const YT_API_KEY = "AIzaSyCyuvMCjXk4Zv90FjlMR9z08nK_Tg8U9oA";
+/* 你的 YouTube Data API v3 Key（請在 GCP 將 HTTP 來源限制到你的網域） */
+const YT_API_KEY = "YOUR_YOUTUBE_API_KEY_HERE";
 
 /* ===== 狀態 ===== */
 let player, ytReady=false, playerReady=false, userGestureOK=false;
@@ -71,7 +71,7 @@ let timeLeft=60, timer=null, gameOver=false;
 let current=null; // {videoId, t, choices[], correctIndex, answerTitle, duration}
 let seen=[];     // 最近 40 題的 videoId
 
-/* ===== 動態載入 IFrame API，避免 onYouTubeIframeAPIReady 順序問題 ===== */
+/* ===== 動態載入 IFrame API ===== */
 function loadIframeAPI() {
   return new Promise((resolve) => {
     if (window.YT && window.YT.Player) return resolve();
@@ -82,25 +82,36 @@ function loadIframeAPI() {
   });
 }
 
-/* ===== 初始化 Player ===== */
+/* ===== 初始化 Player（帶 origin/host、掛 onError 自動換題） ===== */
 async function initPlayer(){
   await loadIframeAPI();
   ytReady = true;
   player = new YT.Player("player", {
     width:"100%", height:"100%", videoId:"",
-    playerVars:{ controls:0, modestbranding:1, rel:0, playsinline:1, fs:0, disablekb:1, iv_load_policy:3 },
+    host: "https://www.youtube.com",
+    playerVars:{
+      origin: location.origin,
+      controls:0, modestbranding:1, rel:0, playsinline:1, fs:0, disablekb:1, iv_load_policy:3
+    },
     events:{
       onReady: () => {
         playerReady = true;
-        // 為了 iOS 自動播放限制，先靜音（允許自動播放），之後我們會立即暫停
         try { player.mute(); } catch {}
         tryStartGame();
+      },
+      onError: (e) => {
+        console.warn("YT onError", e?.data);
+        // 2、5、101、150 → 直接換下一題
+        if ([2,5,101,150].includes(e?.data)) {
+          // 自動跳下一題，避免整局卡死
+          startRound();
+        }
       }
     }
   });
 }
 
-/* ===== 小工具 ===== */
+/* ===== 工具 ===== */
 const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
 const clamp = (x,a,b)=>Math.max(a,Math.min(b,x));
 const norm  = (s="")=>s.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g,"");
@@ -115,19 +126,18 @@ const updateHUD = ()=>{
 const showLoading = (on)=> document.getElementById("loading").style.display = on?"flex":"none";
 const pushSeen = (vid)=>{ seen.push(String(vid)); if(seen.length>40) seen.shift(); };
 
-/* ===== 自動開始條件判斷 ===== */
+/* ===== 自動開始條件 ===== */
 function tryStartGame(){
   if (playerReady) {
-    // iOS 若仍被自動播放政策限制，顯示「點一下開始」
-    const canAutoplay = /(iPhone|iPad|iPod)/i.test(navigator.userAgent) ? false : true;
-    if (canAutoplay) {
+    const isiOS = /(iPhone|iPad|iPod)/i.test(navigator.userAgent);
+    if (!isiOS) {
       startGame();
     } else {
-      // 嘗試先開始；若 1 秒內檢不到播放狀態則顯示按鈕
+      // 嘗試自動開始；若仍被阻擋，1 秒後顯示「點一下開始」
       startGame(true);
       setTimeout(()=>{
         const st = player.getPlayerState?.();
-        if (st !== 1 && st !== 2) { // 非播放/暫停
+        if (st !== 1 && st !== 2) {
           document.getElementById("tapstart").style.display = "flex";
         }
       }, 1000);
@@ -135,7 +145,7 @@ function tryStartGame(){
   }
 }
 
-/* ===== Day1：純前端取題（固定 K-Pop 官方 MV → 四選一 → 隨機 5%~95% 秒數）===== */
+/* ===== 取題（只取可外嵌/可聯播，並過濾地區限制） ===== */
 async function fetchRound(){
   // 固定主題：K-Pop 官方 MV（中/韓/英混合關鍵詞）
   const q = "K-Pop official MV 공식 뮤직비디오 아이돌 K-POP";
@@ -149,6 +159,9 @@ async function fetchRound(){
   searchURL.searchParams.set("regionCode", "KR");
   searchURL.searchParams.set("relevanceLanguage", "ko");
   searchURL.searchParams.set("q", q);
+  // 只取能嵌入/能在 youtube.com 以外播放的影片
+  searchURL.searchParams.set("videoEmbeddable", "true");
+  searchURL.searchParams.set("videoSyndicated", "true");
   searchURL.searchParams.set("fields", "items(id/videoId,snippet/title,snippet/description,snippet/channelTitle)");
 
   const sRes = await fetch(searchURL.toString());
@@ -170,13 +183,13 @@ async function fetchRound(){
   prelim = prelim.filter(v=>looksLikeMV(v.title,v.desc,v.channel));
   if(!prelim.length) throw new Error("沒有合適的 MV，請再試一次");
 
-  // 取影片長度
+  // 取影片長度 + 狀態（embeddable / regionRestriction）
   const ids = prelim.map(v=>v.id).join(",");
   const videosURL = new URL("https://www.googleapis.com/youtube/v3/videos");
   videosURL.searchParams.set("key", YT_API_KEY);
-  videosURL.searchParams.set("part", "contentDetails,snippet");
+  videosURL.searchParams.set("part", "contentDetails,snippet,status");
   videosURL.searchParams.set("id", ids);
-  videosURL.searchParams.set("fields", "items(id,contentDetails/duration,snippet/title,snippet/channelTitle)");
+  videosURL.searchParams.set("fields", "items(id,contentDetails/duration,contentDetails/regionRestriction,status/embeddable,snippet/title,snippet/channelTitle)");
   const vRes = await fetch(videosURL.toString());
   if (!vRes.ok) throw new Error("videos lookup failed");
   const vJson = await vRes.json();
@@ -185,14 +198,23 @@ async function fetchRound(){
     const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
     if(!m) return 0; const h=+(m[1]||0), M=+(m[2]||0), s=+(m[3]||0); return h*3600+M*60+s;
   };
+  const myCC = (Intl?.DateTimeFormat?.().resolvedOptions?.().locale || "en-US").split("-").pop()?.toUpperCase() || "TW";
+
   let all = (vJson.items||[]).map(v=>{
     const dur = isoToSec(v.contentDetails?.duration||"PT0S");
-    return { id:v.id, duration:dur, title:v.snippet?.title||"", channel:v.snippet?.channelTitle||"" };
-  }).filter(x=>x.duration>=120);
+    const rr = v.contentDetails?.regionRestriction || {};
+    const emb = v.status?.embeddable !== false;
+    // 地區過濾：若 blocked 含我所在國家 → 排除；若 allowed 存在且不含我國家 → 排除
+    const blocked = Array.isArray(rr.blocked) ? rr.blocked : [];
+    const allowed = Array.isArray(rr.allowed) ? rr.allowed : null;
+    const regionOK = (!blocked.includes(myCC)) && (!allowed || allowed.includes(myCC));
+    return { id:v.id, duration:dur, title:v.snippet?.title||"", channel:v.snippet?.channelTitle||"", embeddable: emb, regionOK };
+  })
+  .filter(x=>x.duration>=120 && x.embeddable && x.regionOK);
 
-  if(!all.length) throw new Error("暫無可玩的影片（長度不足）");
+  if(!all.length) throw new Error("暫無可外嵌且在你地區可播放的 MV");
 
-  // 正解 + 3 個干擾（只用「標題」）
+  // 正解 + 3 干擾（只用「標題」）
   const pick = all[Math.floor(Math.random()*all.length)];
   const answerTitle = pick.title;
   const normKey = (t,a)=>`${norm(t)}|${norm(a)}`;
@@ -225,20 +247,19 @@ async function startRound(){
     current = data; qCount++; updateHUD(); pushSeen(data.videoId);
 
     player.loadVideoById(data.videoId);
-    // 等待開始播放再 seek & pause；若被阻擋，交給「點一下開始」手勢
-    let played = false;
+    let controlled = false;
     for(let i=0;i<30;i++){
       const st = player.getPlayerState?.();
-      if(st === 1 || st === 2){ // PLAYING or PAUSED
+      if(st === 1 || st === 2){ // PLAYING / PAUSED
         player.seekTo(data.t, true);
         setTimeout(()=> player.pauseVideo(), 120);
-        played = true;
+        controlled = true;
         break;
       }
       try{ player.playVideo(); }catch{}
       await sleep(100);
     }
-    if (!played && !userGestureOK) {
+    if (!controlled && !userGestureOK) {
       document.getElementById("tapstart").style.display = "flex";
     }
 
@@ -304,15 +325,11 @@ document.getElementById("tapBtn").onclick = () => {
   userGestureOK = true;
   document.getElementById("tapstart").style.display = "none";
   try { player.playVideo(); } catch{}
-  // 立即重新出題（確保能控制播放）
   startRound();
 };
 
-/* ===== 啟動：載入 IFrame API → 初始化 player → 自動開始 ===== */
-initPlayer().then(() => {
-  // 自動開始一局（若 iOS 阻擋，自動顯示「點一下開始」）
-  tryStartGame();
-});
+/* ===== 啟動 ===== */
+initPlayer().then(() => tryStartGame());
 </script>
 </body>
 </html>
