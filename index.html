@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-<title>K-Pop Guess · MVP</title>
+<title>K-Pop Guess · Auto Start</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <style>
@@ -13,12 +13,6 @@
   .wrap{ height:100svh; display:flex; flex-direction:column; padding: 2.4vw; max-width: 960px; margin: 0 auto; }
   h1{ font-size: clamp(16px,4.4vw,20px); margin:0 0 .8vh 0; }
 
-  .row{ display:flex; gap:min(2.0vw,12px); }
-  .input,.btn{ font-size: clamp(13px,3.2vw,16px); padding: 1.0vh 1.4vw; border-radius: var(--r); }
-  .input{ flex:1; border:1px solid #ccc; }
-  .btn{ border:none; background:#111; color:#fff; cursor:pointer; }
-  .btn:disabled{ opacity:.6; cursor:not-allowed; }
-
   .hud{ display:grid; grid-template-columns:repeat(4,1fr); gap:min(1.0vw,8px); margin-top:.9vh; }
   .pill{ background:#111; color:#fff; text-align:center; font-weight:800; border-radius:2.6vw;
          padding:.9vh .6vw; font-size:clamp(12px,3.0vw,15px); line-height:1.05; }
@@ -26,6 +20,8 @@
   .stage{ position:relative; width:100%; aspect-ratio:16/9; background:#000; border-radius: 3vw; margin-top: 1.0vh; overflow:hidden; }
   .mask-top{ position:absolute; left:0; right:0; top:0; height:15%; background:#000; pointer-events:none; }
   .loading{ position:absolute; inset:0; display:none; align-items:center; justify-content:center; color:#fff; background:rgba(0,0,0,.25); font-size:clamp(14px,3.4vw,18px); }
+  .tapstart{ position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.5); }
+  .tapstart button{ font-size:clamp(16px,4.2vw,20px); padding:1.2vh 2.4vw; border-radius:14px; border:none; background:#fff; }
 
   .choices{ display:grid; gap:.9vh; margin-top:.9vh; }
   .choice{ text-align:left; border:.35vw solid #ccc; background:#111; color:#fff; border-radius:3.2vw;
@@ -34,16 +30,13 @@
   .choice.wrong{ background:#b71c1c; }
 
   .foot{ display:flex; gap:min(2vw,12px); margin-top:.8vh; }
+  .btn{ border:none; background:#111; color:#fff; cursor:pointer; border-radius:var(--r); padding:1.0vh 1.4vw; font-size:clamp(13px,3.2vw,16px); }
+  .btn:disabled{ opacity:.6; cursor:not-allowed; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>🎵 K-Pop Guess（MVP）</h1>
-
-  <div class="row">
-    <input id="kw" class="input" inputmode="search" placeholder="K-Pop、아이돌…（預設：K-Pop）">
-    <button id="startBtn" class="btn">開始遊戲</button>
-  </div>
+  <h1>🎵 K-Pop Guess（Auto Start）</h1>
 
   <div class="hud">
     <div class="pill" id="hudTime">⏱ 60s</div>
@@ -56,6 +49,7 @@
     <div id="player" style="position:absolute; inset:0;"></div>
     <div class="mask-top"></div>
     <div id="loading" class="loading">出題中…</div>
+    <div id="tapstart" class="tapstart"><button id="tapBtn">點一下開始</button></div>
   </div>
 
   <div id="choices" class="choices"></div>
@@ -66,29 +60,47 @@
   </div>
 </div>
 
-<!-- YouTube IFrame API -->
-<script src="https://www.youtube.com/iframe_api"></script>
 <script>
-/* ==== 換成你的 YouTube Data API v3 Key，並在 GCP 將其限制為你的網站網域 ==== */
+/* 你的 YouTube Data API v3 Key（建議在 GCP 限制 HTTP 來源到你的網域） */
 const YT_API_KEY = "AIzaSyCyuvMCjXk4Zv90FjlMR9z08nK_Tg8U9oA";
 
 /* ===== 狀態 ===== */
-let player, ytReady=false;
+let player, ytReady=false, playerReady=false, userGestureOK=false;
 let score=0, qCount=0, correctCount=0, wrongCount=0;
 let timeLeft=60, timer=null, gameOver=false;
 let current=null; // {videoId, t, choices[], correctIndex, answerTitle, duration}
 let seen=[];     // 最近 40 題的 videoId
 
-/* ===== YouTube IFrame 初始化（需全域） ===== */
-function onYouTubeIframeAPIReady(){
-  ytReady=true;
-  player = new YT.Player("player", {
-    width:"100%", height:"100%", videoId:"",
-    playerVars:{ controls:0, modestbranding:1, rel:0, playsinline:1, fs:0, disablekb:1, iv_load_policy:3 }
+/* ===== 動態載入 IFrame API，避免 onYouTubeIframeAPIReady 順序問題 ===== */
+function loadIframeAPI() {
+  return new Promise((resolve) => {
+    if (window.YT && window.YT.Player) return resolve();
+    const tag = document.createElement("script");
+    tag.src = "https://www.youtube.com/iframe_api";
+    window.onYouTubeIframeAPIReady = () => resolve();
+    document.head.appendChild(tag);
   });
 }
 
-/* ===== 工具 ===== */
+/* ===== 初始化 Player ===== */
+async function initPlayer(){
+  await loadIframeAPI();
+  ytReady = true;
+  player = new YT.Player("player", {
+    width:"100%", height:"100%", videoId:"",
+    playerVars:{ controls:0, modestbranding:1, rel:0, playsinline:1, fs:0, disablekb:1, iv_load_policy:3 },
+    events:{
+      onReady: () => {
+        playerReady = true;
+        // 為了 iOS 自動播放限制，先靜音（允許自動播放），之後我們會立即暫停
+        try { player.mute(); } catch {}
+        tryStartGame();
+      }
+    }
+  });
+}
+
+/* ===== 小工具 ===== */
 const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
 const clamp = (x,a,b)=>Math.max(a,Math.min(b,x));
 const norm  = (s="")=>s.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g,"");
@@ -103,12 +115,30 @@ const updateHUD = ()=>{
 const showLoading = (on)=> document.getElementById("loading").style.display = on?"flex":"none";
 const pushSeen = (vid)=>{ seen.push(String(vid)); if(seen.length>40) seen.shift(); };
 
-/* ===== Day1：純前端取題（K-Pop 官方 MV → 四選一 → 隨機 5%~95% 秒數）===== */
-async function fetchRound(keywords){
-  const kw = (keywords||"").trim() || "K-Pop official MV";
-  const q = `${kw} 공식 뮤직비디오 아이돌 K-POP`;
+/* ===== 自動開始條件判斷 ===== */
+function tryStartGame(){
+  if (playerReady) {
+    // iOS 若仍被自動播放政策限制，顯示「點一下開始」
+    const canAutoplay = /(iPhone|iPad|iPod)/i.test(navigator.userAgent) ? false : true;
+    if (canAutoplay) {
+      startGame();
+    } else {
+      // 嘗試先開始；若 1 秒內檢不到播放狀態則顯示按鈕
+      startGame(true);
+      setTimeout(()=>{
+        const st = player.getPlayerState?.();
+        if (st !== 1 && st !== 2) { // 非播放/暫停
+          document.getElementById("tapstart").style.display = "flex";
+        }
+      }, 1000);
+    }
+  }
+}
 
-  // 1) 搜尋（先粗篩）
+/* ===== Day1：純前端取題（固定 K-Pop 官方 MV → 四選一 → 隨機 5%~95% 秒數）===== */
+async function fetchRound(){
+  // 固定主題：K-Pop 官方 MV（中/韓/英混合關鍵詞）
+  const q = "K-Pop official MV 공식 뮤직비디오 아이돌 K-POP";
   const searchURL = new URL("https://www.googleapis.com/youtube/v3/search");
   searchURL.searchParams.set("key", YT_API_KEY);
   searchURL.searchParams.set("part", "snippet");
@@ -140,7 +170,7 @@ async function fetchRound(keywords){
   prelim = prelim.filter(v=>looksLikeMV(v.title,v.desc,v.channel));
   if(!prelim.length) throw new Error("沒有合適的 MV，請再試一次");
 
-  // 2) 查 duration
+  // 取影片長度
   const ids = prelim.map(v=>v.id).join(",");
   const videosURL = new URL("https://www.googleapis.com/youtube/v3/videos");
   videosURL.searchParams.set("key", YT_API_KEY);
@@ -162,7 +192,7 @@ async function fetchRound(keywords){
 
   if(!all.length) throw new Error("暫無可玩的影片（長度不足）");
 
-  // 3) 正解 + 3 個干擾（只用「標題」）
+  // 正解 + 3 個干擾（只用「標題」）
   const pick = all[Math.floor(Math.random()*all.length)];
   const answerTitle = pick.title;
   const normKey = (t,a)=>`${norm(t)}|${norm(a)}`;
@@ -178,7 +208,7 @@ async function fetchRound(keywords){
   const choices = shuffle([answerTitle, ...dist.slice(0,3)]);
   const correctIndex = choices.findIndex(t=>norm(t)===norm(answerTitle));
 
-  // 4) 抽樣秒數（5%~95%）
+  // 抽樣秒數（5%~95%）
   const start = Math.floor(pick.duration*0.05);
   const end   = Math.ceil(pick.duration*0.95);
   const t = clamp(Math.floor(start + Math.random()*(end-start)), 1, Math.max(1,pick.duration-1));
@@ -189,23 +219,29 @@ async function fetchRound(keywords){
 /* ===== 出題 ===== */
 async function startRound(){
   if(gameOver) return;
-  if(!ytReady){ alert("YouTube 正在載入，請稍候再試"); return; }
-  const kw = document.getElementById("kw").value;
   showLoading(true);
   try{
-    const data = await fetchRound(kw);
+    const data = await fetchRound();
     current = data; qCount++; updateHUD(); pushSeen(data.videoId);
 
     player.loadVideoById(data.videoId);
-    // 等待開始播放再 seek & pause（iOS 需要用戶手勢後才能控制）
+    // 等待開始播放再 seek & pause；若被阻擋，交給「點一下開始」手勢
+    let played = false;
     for(let i=0;i<30;i++){
-      if(player.getPlayerState?.() === 1){ // PLAYING
+      const st = player.getPlayerState?.();
+      if(st === 1 || st === 2){ // PLAYING or PAUSED
         player.seekTo(data.t, true);
         setTimeout(()=> player.pauseVideo(), 120);
+        played = true;
         break;
       }
+      try{ player.playVideo(); }catch{}
       await sleep(100);
     }
+    if (!played && !userGestureOK) {
+      document.getElementById("tapstart").style.display = "flex";
+    }
+
     renderChoices();
     document.getElementById("nextBtn").disabled = true;
   }catch(e){
@@ -216,7 +252,7 @@ async function startRound(){
   }
 }
 
-/* ===== 畫四選一 ===== */
+/* ===== 四選一 ===== */
 function renderChoices(){
   const el = document.getElementById("choices");
   el.innerHTML = "";
@@ -245,7 +281,7 @@ function choose(idx, btn){
 }
 
 /* ===== 遊戲控制 ===== */
-function startGame(){
+function startGame(silent=false){
   score=0; qCount=0; correctCount=0; wrongCount=0; timeLeft=60; gameOver=false;
   updateHUD();
   if(timer) clearInterval(timer);
@@ -256,13 +292,27 @@ function startGame(){
       alert(`時間到！分數 ${score}｜題數 ${qCount}｜正確 ${correctCount}｜錯誤 ${wrongCount}`);
       document.getElementById("restartBtn").style.display = "inline-block";
     }
-  }, 1000);
+  },1000);
+  if (!silent) document.getElementById("restartBtn").style.display = "none";
   startRound();
 }
 
-document.getElementById("startBtn").onclick = () => startGame();
+/* ===== 事件綁定 ===== */
 document.getElementById("nextBtn").onclick  = () => startRound();
-document.getElementById("restartBtn").onclick = () => { document.getElementById("restartBtn").style.display="none"; startGame(); };
+document.getElementById("restartBtn").onclick = () => { startGame(); };
+document.getElementById("tapBtn").onclick = () => {
+  userGestureOK = true;
+  document.getElementById("tapstart").style.display = "none";
+  try { player.playVideo(); } catch{}
+  // 立即重新出題（確保能控制播放）
+  startRound();
+};
+
+/* ===== 啟動：載入 IFrame API → 初始化 player → 自動開始 ===== */
+initPlayer().then(() => {
+  // 自動開始一局（若 iOS 阻擋，自動顯示「點一下開始」）
+  tryStartGame();
+});
 </script>
 </body>
 </html>
