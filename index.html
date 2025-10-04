@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <meta name="referrer" content="origin" />
-<title>K-Pop MV Guess — MVP</title>
+<title>K-Pop MV Guess — MVP (Auto-start + Play Again)</title>
 <style>
   *{box-sizing:border-box}
   html,body{margin:0;padding:0;background:#000;color:#fff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif}
@@ -16,15 +16,20 @@
   .mask-top{position:absolute;left:0;right:0;top:0;height:15%;background:#000;pointer-events:none}
   .overlay,.loading{position:absolute;inset:0;display:none;align-items:center;justify-content:center}
   .overlay{background:rgba(0,0,0,.55);z-index:3}
-  .overlay button,.btn{border:none;background:#fff;color:#000;border-radius:12px;padding:10px 16px;font-weight:700;cursor:pointer}
   .loading{background:rgba(0,0,0,.4);z-index:2}
+  .overlay button,.btn{border:none;background:#fff;color:#000;border-radius:12px;padding:10px 16px;font-weight:700;cursor:pointer}
+
   .choices{display:grid;gap:10px;margin-top:12px}
   .choice{border:.3vw solid #333;background:#111;color:#fff;border-radius:12px;padding:12px 14px;text-align:left;font-size:clamp(13px,3.2vw,16px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .choice.correct{background:#2e7d32}
   .choice.wrong{background:#b71c1c}
-  .bar{display:flex;gap:10px;margin-top:10px;align-items:center}
-  .btn:disabled{opacity:.6;cursor:not-allowed}
-  #againBtn{display:none}
+
+  /* Result modal */
+  .result{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6);z-index:10}
+  .card{background:#111;color:#fff;border-radius:16px;padding:18px 16px;max-width:420px;width:86vw;text-align:center}
+  .card h2{margin:0 0 .4rem;font-size:clamp(16px,4.5vw,20px)}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:.6rem 0 1rem}
+  .stat{background:#1c1c1c;border-radius:12px;padding:10px 6px;font-weight:800}
 </style>
 </head>
 <body>
@@ -41,13 +46,23 @@
     <div id="player" style="position:absolute;inset:0"></div>
     <div class="mask-top"></div>
     <div id="loading" class="loading"><div>Loading…</div></div>
+    <!-- iOS one-time gesture -->
     <div id="tap" class="overlay"><button id="tapBtn">Tap to start</button></div>
   </div>
 
   <div id="choices" class="choices"></div>
+</div>
 
-  <div class="bar">
-    <button id="againBtn" class="btn">Play Again</button>
+<!-- Time's up modal -->
+<div id="result" class="result">
+  <div class="card">
+    <h2>⏱ Time’s up!</h2>
+    <div class="stats">
+      <div class="stat">⭐ Score<br><span id="rScore">0</span></div>
+      <div class="stat">✅ Correct<br><span id="rCorrect">0</span></div>
+      <div class="stat">❓ Questions<br><span id="rQ">0</span></div>
+    </div>
+    <button id="playAgainBtn" class="btn">Play again</button>
   </div>
 </div>
 
@@ -84,88 +99,82 @@ const MV_POOL = [
   { artist:"IVE",        title:"I AM",             id:"6ZUIwj3FgUY" }
 ];
 
-/* ===== State & utilities ===== */
+/* ===== State & utils ===== */
 let player, playerReady=false;
-let activeRoundId = 0;       // token to cancel stale rounds
+let activeRoundId = 0;         // token for cancelling stale rounds
 let timeLeft=60, timerId=null;
 let totalQuestions=0, totalCorrect=0;
-let seenIds = new Set();     // avoid repeats within a run
+let seenIds = new Set();
 
 const $ = id => document.getElementById(id);
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
 const clamp = (x,a,b)=>Math.max(a,Math.min(b,x));
+const shuffle = a => { const x=a.slice(); for(let i=x.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [x[i],x[j]]=[x[j],x[i]]} return x; };
 function setHUD(){ $("time").textContent=timeLeft; $("correct").textContent=totalCorrect; $("questions").textContent=totalQuestions; }
 function showLoading(on){ $("loading").style.display = on?"flex":"none"; }
-function shuffle(a){ const x=a.slice(); for(let i=x.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [x[i],x[j]]=[x[j],x[i]] } return x; }
 
-/* ===== IFrame API ===== */
+/* ===== YouTube IFrame ===== */
 function onYouTubeIframeAPIReady(){
   player = new YT.Player("player", {
     host:"https://www.youtube.com",
     width:"100%", height:"100%", videoId:"",
     playerVars:{ origin:location.origin, autoplay:1, mute:1, playsinline:1, controls:0, rel:0, modestbranding:1 },
     events:{
-      onReady: () => { playerReady=true; maybeStart(); },
-      onError: () => { /* token logic prevents mismatch; we just let round controller decide */ }
+      onReady: () => { playerReady=true; autoStart(); },
+      onError: () => { /* token logic handles retry/advance */ }
     }
   });
 }
 
-function maybeStart(){
+function autoStart(){
+  // iOS needs a tap to grant autoplay control
   const isiOS = /(iPhone|iPad|iPod)/i.test(navigator.userAgent);
   if (isiOS) {
-    $("tap").style.display="flex";            // need one user gesture on iOS
+    $("tap").style.display="flex";
   } else {
-    startGame();                              // auto start on desktop/Android Safari/Chrome
+    startGame();
   }
 }
 
 /* ===== Build one question from static pool ===== */
 function buildQuestion(){
-  // pick 4 distinct ids, preferring ones not seen in this run
   const candidates = shuffle(MV_POOL.filter(v=>!seenIds.has(v.id)));
   const picks = (candidates.length>=4 ? candidates.slice(0,4) : shuffle(MV_POOL).slice(0,4));
-
   const correct = picks[0];
-  const distractors = picks.slice(1);
-
   const options = shuffle([
     { text: correct.title, correct: true },
-    ...distractors.map(v => ({ text: v.title, correct: false }))
+    ...picks.slice(1).map(v => ({ text: v.title, correct: false }))
   ]);
   const correctIndex = options.findIndex(o => o.correct);
-
-  // random second ~10–170 (no duration API in MVP)
-  const t = Math.floor(10 + Math.random() * 160);
-
+  const t = Math.floor(10 + Math.random() * 160); // ~10–170s
   return { rid: activeRoundId, videoId: correct.id, t, options, correctIndex };
 }
 
-/* ===== Load & freeze with token-awareness ===== */
+/* ===== Load & freeze (token-aware) ===== */
 async function loadAndFreeze(videoId, t, rid){
   try { player.loadVideoById(videoId); } catch {}
   const start = Date.now();
   while (Date.now() - start < 3500) {
-    if (rid !== activeRoundId) return false; // cancelled by a newer round
+    if (rid !== activeRoundId) return false;
     const st = player.getPlayerState?.();
-    if (st === 1 || st === 2){ // PLAYING or PAUSED
+    if (st === 1 || st === 2){
       try{
         player.seekTo(t, true);
-        setTimeout(()=> { if (rid === activeRoundId) player.pauseVideo(); }, 120);
+        setTimeout(()=>{ if (rid===activeRoundId) player.pauseVideo(); }, 120);
       }catch{}
       return true;
     }
     try{ player.playVideo(); }catch{}
     await sleep(100);
   }
-  return false; // timed out
+  return false;
 }
 
 /* ===== Game loop ===== */
 function startGame(){
-  if (!playerReady){ alert("YouTube is still loading — try again in a moment."); return; }
+  if (!playerReady) return;
   $("tap").style.display="none";
-  $("againBtn").style.display="none";
+  $("result").style.display="none";
   seenIds.clear();
   totalQuestions=0; totalCorrect=0; timeLeft=60; setHUD();
   if (timerId) clearInterval(timerId);
@@ -173,8 +182,11 @@ function startGame(){
     timeLeft--; setHUD();
     if (timeLeft<=0){
       clearInterval(timerId); timerId=null;
-      // show Play Again button on time up
-      $("againBtn").style.display="inline-block";
+      // show result modal instead of alert
+      $("rScore").textContent = String(totalCorrect * 100);
+      $("rCorrect").textContent = String(totalCorrect);
+      $("rQ").textContent = String(totalQuestions);
+      $("result").style.display = "flex";
     }
   }, 1000);
   nextRound();
@@ -182,16 +194,16 @@ function startGame(){
 
 async function nextRound(){
   if (timeLeft<=0) return;
-  const rid = ++activeRoundId;       // new token for this round
+  const rid = ++activeRoundId;
   showLoading(true);
 
-  const q = buildQuestion();         // build before loading (bind options to video)
-  renderChoices(q);                  // show options immediately
+  const q = buildQuestion();
+  renderChoices(q);
 
   const ok = await loadAndFreeze(q.videoId, q.t, rid);
   showLoading(false);
 
-  if (!ok || rid !== activeRoundId) return; // cancelled/failed load
+  if (!ok || rid !== activeRoundId) return;
   totalQuestions++; setHUD();
   seenIds.add(q.videoId);
 }
@@ -205,30 +217,28 @@ function renderChoices(q){
     btn.className = "choice";
     btn.textContent = `${String.fromCharCode(65+i)}. ${opt.text}`;
     btn.onclick = () => {
-      if (q.rid !== activeRoundId) return; // ignore stale clicks
-
+      if (q.rid !== activeRoundId) return;
       const buttons = [...document.querySelectorAll(".choice")];
-      buttons.forEach(b=> b.disabled=true);
+      buttons.forEach(b=> b.disabled = true);
 
       if (opt.correct){
         totalCorrect++;
         btn.classList.add("correct");
-      }else{
+      } else {
         btn.classList.add("wrong");
         const okBtn = buttons[q.options.findIndex(o=>o.correct)];
         if (okBtn) okBtn.classList.add("correct");
       }
       setHUD();
-
-      setTimeout(()=>{ if (q.rid === activeRoundId && timeLeft>0) nextRound(); }, 700);
+      setTimeout(()=>{ if (q.rid===activeRoundId && timeLeft>0) nextRound(); }, 700);
     };
     box.appendChild(btn);
   });
 }
 
-/* ===== UI ===== */
-$("tapBtn").onclick   = () => startGame();
-$("againBtn").onclick = () => startGame();
+/* ===== UI events ===== */
+$("tapBtn").onclick = () => startGame();
+$("playAgainBtn").onclick = () => startGame();
 </script>
 </body>
 </html>
