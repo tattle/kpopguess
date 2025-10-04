@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <meta name="referrer" content="origin" />
-<title>K-Pop MV Guess — 60s</title>
+<title>K-Pop MV Guess — Fixed Correct Option + Auto-advance</title>
 <style>
   *{box-sizing:border-box}
   html,body{margin:0;padding:0;background:#000;color:#fff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif}
@@ -16,16 +16,14 @@
   .mask-top{position:absolute;left:0;right:0;top:0;height:15%;background:#000;pointer-events:none}
   .overlay,.loading{position:absolute;inset:0;display:none;align-items:center;justify-content:center}
   .overlay{background:rgba(0,0,0,.55);z-index:3}
-  .overlay button,.bar .btn{border:none;background:#fff;color:#000;border-radius:12px;padding:10px 16px;font-weight:700;cursor:pointer}
+  .overlay button,.btn{border:none;background:#fff;color:#000;border-radius:12px;padding:10px 16px;font-weight:700;cursor:pointer}
   .loading{background:rgba(0,0,0,.4);z-index:2}
   .choices{display:grid;gap:10px;margin-top:12px}
   .choice{border:.3vw solid #333;background:#111;color:#fff;border-radius:12px;padding:12px 14px;text-align:left;font-size:clamp(13px,3.2vw,16px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .choice.correct{background:#2e7d32}
   .choice.wrong{background:#b71c1c}
   .bar{display:flex;gap:10px;margin-top:10px;align-items:center}
-  .btn{border:none;background:#fff;color:#000;border-radius:12px;padding:10px 16px;font-weight:700;cursor:pointer}
   .btn:disabled{opacity:.6;cursor:not-allowed}
-  .title{margin-left:auto;opacity:.9;font-size:.9rem}
 </style>
 </head>
 <body>
@@ -49,8 +47,6 @@
 
   <div class="bar">
     <button id="startBtn" class="btn">Start 60s</button>
-    <button id="nextBtn" class="btn" disabled>Next</button>
-    <span id="mvTitle" class="title"></span>
   </div>
 </div>
 
@@ -64,8 +60,9 @@ const YT_API_KEY = "AIzaSyDBB3J-vwLYe8Enbmi6SmNCB5NW4QJv5Dc";
 let player, ready=false, userGesture=false;
 let timeLeft=60, timerId=null;
 let totalQuestions=0, totalCorrect=0;
-let current=null; // {videoId, duration, t, correctTitle, options[4], correctIndex}
-let poolCache=[]; // candidate pool for building distractors
+let current=null; // {videoId, duration, t, options:[{text,correct}], correctIndex}
+let poolCache=[]; // MV candidates for the current run
+let roundBusy=false; // prevent overlapping rounds
 const recent=[]; const RECENT_MAX=40;
 
 const $ = id => document.getElementById(id);
@@ -98,6 +95,7 @@ function onYouTubeIframeAPIReady(){
     events:{
       onReady: () => { ready=true; maybeAutostart(); },
       onError: () => { // skip problematic video fast
+        roundBusy=false;
         startRound();
       }
     }
@@ -141,7 +139,7 @@ async function fetchPool(){
   };
 
   let prelim = (s.items||[])
-    .map(i=>({ id:i.id?.videoId, title:i.snippet?.title||"", desc:i.snippet?.description||"", channel:i.snippet?.channelTitle||"" }))
+    .map(i=>({ id:i.id?.videoId, title:i.snippet?.title||"", desc:i.snippet?.description||"", channel:i.snippet?.channelTitle||"", duration:0 }))
     .filter(v => v.id && looksLikeMV(v.title,v.desc,v.channel) && !recent.includes(v.id));
 
   if (!prelim.length) return FALLBACK.slice();
@@ -171,24 +169,43 @@ async function fetchPool(){
   return shuffle(pool).slice(0,24);
 }
 
-/** === Build ONE question from a pool ===
- * 1) pick a correct MV
- * 2) create 3 distractor titles
- * 3) pick random time 5%~95% and pause there
- */
+/** === Build ONE question with guaranteed 1-correct + 3-incorrect === */
 function buildQuestion(pool){
   const correct = pool[Math.floor(Math.random()*pool.length)];
   const correctTitle = correct.title;
+  const norm = s => (s||"").toLowerCase().replace(/\s+/g," ").trim();
 
-  const distractors = shuffle(pool.filter(x=>x.id!==correct.id)).slice(0,3).map(x=>x.title);
-  const options = shuffle([correctTitle, ...distractors]);
-  const correctIndex = options.findIndex(t => t && t.toLowerCase()===correctTitle.toLowerCase());
+  // unique distractors by normalized title
+  const seen = new Set([norm(correctTitle)]);
+  const distractors = [];
+  for (const cand of shuffle(pool)) {
+    if (cand.id === correct.id) continue;
+    const n = norm(cand.title);
+    if (seen.has(n)) continue;
+    seen.add(n);
+    distractors.push(cand.title);
+    if (distractors.length >= 3) break;
+  }
+  // if still short, pad from FALLBACK
+  for (const cand of FALLBACK) {
+    if (distractors.length >= 3) break;
+    const n = norm(cand.title);
+    if (!seen.has(n)) { seen.add(n); distractors.push(cand.title); }
+  }
 
+  const optionObjs = [
+    { text: correctTitle, correct: true },
+    ...distractors.slice(0,3).map(t => ({ text: t, correct: false }))
+  ];
+  const options = shuffle(optionObjs); // keep `correct` flag with each option
+  const correctIndex = options.findIndex(o => o.correct);
+
+  // random time 5%~95%, clamped to valid range
   const start = Math.floor(correct.duration*0.05);
   const end   = Math.ceil(correct.duration*0.95);
   const t = clamp(Math.floor(start + Math.random()*(end-start)), 1, Math.max(1, correct.duration-1));
 
-  return { videoId:correct.id, duration:correct.duration, t, correctTitle, options, correctIndex };
+  return { videoId:correct.id, duration:correct.duration, t, options, correctIndex };
 }
 
 /** === GAME LOOP === */
@@ -197,42 +214,33 @@ function startGame(){
   userGesture = true;
   $("tap").style.display="none";
 
-  // reset
   timeLeft=60; totalQuestions=0; totalCorrect=0; setHUD();
   if (timerId) clearInterval(timerId);
   timerId = setInterval(()=>{
     timeLeft--; setHUD();
     if (timeLeft<=0){
       clearInterval(timerId); timerId=null;
-      $("nextBtn").disabled=true;
       alert(`Time's up! ✅ Correct: ${totalCorrect} / Questions: ${totalQuestions}`);
     }
   },1000);
 
-  // clear UI
-  $("mvTitle").textContent="";
-  $("choices").innerHTML="";
-  $("nextBtn").disabled=true;
-
-  // prime a pool for this run
   poolCache.length = 0;
   startRound();
 }
 
 async function startRound(){
-  if (timeLeft<=0) return;
+  if (roundBusy || timeLeft<=0) return;
+  roundBusy = true;
   showLoading(true);
   try{
     if (!poolCache.length) poolCache = await fetchPool();
-    // build a question
+
+    // build & load one question
     const q = buildQuestion(poolCache);
-    current = q; totalQuestions++; setHUD();
-    pushRecent(q.videoId);
+    current = q;
 
-    // load the video, seek to random second, and pause there
-    $("mvTitle").textContent = ""; // keep answer hidden
+    // load video, seek to random second, then pause (freeze frame)
     player.loadVideoById(q.videoId);
-
     let controlled=false;
     for (let i=0;i<35;i++){
       const st = player.getPlayerState?.();
@@ -248,52 +256,63 @@ async function startRound(){
     }
     if(!controlled && !userGesture){
       $("tap").style.display="flex";
-      return;
+      return; // wait for user gesture
     }
 
-    // render choices
+    // render choices AFTER the frame is ready; increment visible question count now
+    totalQuestions++; setHUD();
     renderChoices(q);
-    $("nextBtn").disabled = true;
+    pushRecent(q.videoId);
   }catch(e){
-    // any error → try new pool or fallback
+    // soft fail: reset busy and try again fast
     console.warn(e);
-    poolCache = [];
-    await sleep(150);
+    await sleep(120);
+    roundBusy=false;
     return startRound();
   }finally{
     showLoading(false);
+    roundBusy=false;
   }
 }
 
-/** === RENDER & ANSWER === */
+/** === RENDER & ANSWER (auto-advance) === */
 function renderChoices(q){
   const box = $("choices");
   box.innerHTML="";
-  q.options.forEach((title, i)=>{
+  q.options.forEach((opt, i)=>{
     const btn = document.createElement("button");
     btn.className = "choice";
-    btn.textContent = `${String.fromCharCode(65+i)}. ${title}`;
+    btn.textContent = `${String.fromCharCode(65+i)}. ${opt.text}`;
     btn.onclick = () => choose(i, btn);
     box.appendChild(btn);
   });
 }
+
 function choose(i, btn){
-  [...document.querySelectorAll(".choice")].forEach(b=> b.disabled=true);
-  if (i===current.correctIndex){
+  // lock UI
+  const buttons = [...document.querySelectorAll(".choice")];
+  buttons.forEach(b=> b.disabled=true);
+
+  const picked = current.options[i];
+  if (picked.correct){
     totalCorrect++;
     btn.classList.add("correct");
-  }else{
+  } else {
     btn.classList.add("wrong");
-    const ok = document.querySelectorAll(".choice")[current.correctIndex];
-    ok.classList.add("correct");
+    // highlight the correct one
+    const correctIdx = current.correctIndex;
+    if (buttons[correctIdx]) buttons[correctIdx].classList.add("correct");
   }
   setHUD();
-  $("nextBtn").disabled=false;
+
+  // Auto-advance after short delay (no "Next" press needed)
+  setTimeout(()=>{
+    if (timeLeft>0) startRound();
+  }, 800);
 }
 
 /** === UI events === */
 $("startBtn").onclick = () => startGame();
-$("nextBtn").onclick  = () => startRound();
 $("tapBtn").onclick   = () => { userGesture=true; $("tap").style.display="none"; startGame(); };
 </script>
 </body>
