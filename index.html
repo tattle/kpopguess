@@ -57,88 +57,34 @@
    If any ID fails to play/embeds in your region, it will be skipped for that round.
 */
 const MV_POOL = [
-  {
-    "id": "fE2h3lGlOsk",
-    "title": "ITZY – WANNABE"
-  },
-  {
-    "id": "js1CtxSY38I",
-    "title": "ITZY – CAKE"
-  },
-  {
-    "id": "sVTy_wmn5SU",
-    "title": "NewJeans – Super Shy"
-  },
-  {
-    "id": "ArmDp-zijuc",
-    "title": "NewJeans – OMG"
-  },
-  {
-    "id": "gdZLi9oWNZg",
-    "title": "BLACKPINK – How You Like That"
-  },
-  {
-    "id": "IHNzOHi8sJs",
-    "title": "BLACKPINK – DDU-DU DDU-DU"
-  },
-  {
-    "id": "POe9SOEKotk",
-    "title": "BLACKPINK – Shut Down"
-  },
-  {
-    "id": "WPdWvnAAurg",
-    "title": "LE SSERAFIM – ANTIFRAGILE"
-  },
-  {
-    "id": "7UqJ2B6V3Fk",
-    "title": "LE SSERAFIM – UNFORGIVEN"
-  },
-  {
-    "id": "4TWR90KJl84",
-    "title": "aespa – Spicy"
-  },
-  {
-    "id": "Z8Z51no1TD0",
-    "title": "aespa – Drama"
-  },
-  {
-    "id": "kOHB85vDuow",
-    "title": "TWICE – Feel Special"
-  },
-  {
-    "id": "c7rCyll5AeY",
-    "title": "TWICE – Talk that Talk"
-  },
-  {
-    "id": "i0p1bmr0EmE",
-    "title": "TWICE – MORE & MORE"
-  },
-  {
-    "id": "eXbu8dD1zNI",
-    "title": "IVE – I AM"
-  },
-  {
-    "id": "Y8JFxS1HlDo",
-    "title": "IVE – After LIKE"
-  },
-  {
-    "id": "xoVJKj8lcNQ",
-    "title": "IVE – LOVE DIVE"
-  },
-  {
-    "id": "pSUydWEqKwE",
-    "title": "(G)I-DLE – TOMBOY"
-  },
-  {
-    "id": "7GqClqvlObY",
-    "title": "(G)I-DLE – Queencard"
-  },
-  {
-    "id": "H69tJmsgd9I",
-    "title": "IVE – Baddie"
-  }
-];
+  {"artist":"ITZY","title":"WANNABE","videoId":"fE2h3lGlOsk"},
+  {"artist":"ITZY","title":"SNEAKERS","videoId":"Hbb5GPxXF1w"},
+  {"artist":"ITZY","title":"CAKE","videoId":"0bIRwBpBcZQ"},
 
+  {"artist":"NewJeans","title":"Super Shy","videoId":"ArmDp-zijuc"},
+  {"artist":"NewJeans","title":"OMG","videoId":"_ZAgIHmHLdc"},
+  {"artist":"NewJeans","title":"Attention","videoId":"js1CtxSY38I"},
+
+  {"artist":"BLACKPINK","title":"How You Like That","videoId":"ioNng23DkIM"},
+  {"artist":"BLACKPINK","title":"DDU-DU DDU-DU","videoId":"IHNzOHi8sJs"},
+  {"artist":"BLACKPINK","title":"Shut Down","videoId":"POe9SOEKotk"},
+
+  {"artist":"LE SSERAFIM","title":"ANTIFRAGILE","videoId":"pyf8cbqyfPs"},
+  {"artist":"LE SSERAFIM","title":"UNFORGIVEN","videoId":"UBURTj20HXI"},
+
+  {"artist":"aespa","title":"Drama","videoId":"D8VEhcPeSlc"},
+  {"artist":"aespa","title":"Spicy","videoId":"Os_heh8vPfs"},
+  {"artist":"aespa","title":"Savage","videoId":"WPdWvnAAurg"},
+
+  {"artist":"TWICE","title":"FANCY","videoId":"kOHB85vDuow"},
+  {"artist":"TWICE","title":"Feel Special","videoId":"3ymwOvzhwHs"},
+  {"artist":"TWICE","title":"Talk that Talk","videoId":"k6jqx9kZgPM"},
+  {"artist":"TWICE","title":"TT","videoId":"ePpPVE-GGJw"},
+
+  {"artist":"IVE","title":"LOVE DIVE","videoId":"Y8JFxS1HlDo"},
+  {"artist":"IVE","title":"I AM","videoId":"6ZUIwj3FgUY"}
+];
+ 
 /* ===== State & utilities ===== */
 let player, playerReady=false;
 let activeRoundId = 0;       // token to cancel stale rounds
