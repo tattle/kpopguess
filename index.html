@@ -4,121 +4,119 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <meta name="referrer" content="origin" />
-<title>K-Pop MV Guess — Minimal MVP</title>
+<title>K-Pop Random MV Player</title>
 <style>
-  :root { --r:14px; }
-  *{ box-sizing:border-box; }
-  html,body{ margin:0; padding:0; background:#fff; color:#111; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Noto Sans,Arial,sans-serif; }
-  .wrap{ height:100svh; max-width:960px; margin:0 auto; padding:3.2vw; display:flex; flex-direction:column; }
-  h1{ font-size:clamp(16px,4.4vw,20px); margin:0 0 .8vh 0; }
-  .hud{ display:grid; grid-template-columns:repeat(3,1fr); gap:min(2vw,12px); margin:.6vh 0 1vh; }
-  .pill{ background:#111; color:#fff; text-align:center; border-radius:3vw; padding:.9vh 1vw; font-weight:800; font-size:clamp(12px,3.2vw,15px); }
-  .stage{ position:relative; width:100%; aspect-ratio:16/9; background:#000; border-radius:3vw; overflow:hidden; }
-  .mask-top{ position:absolute; left:0; right:0; top:0; height:15%; background:#000; pointer-events:none; }
-  .loading, .tap{ position:absolute; inset:0; display:none; align-items:center; justify-content:center; }
-  .loading{ color:#fff; background:rgba(0,0,0,.35); font-size:clamp(14px,3.6vw,18px); }
-  .tap{ background:rgba(0,0,0,.5); }
-  .tap button{ border:none; background:#fff; border-radius:12px; padding:1.2vh 2.2vw; font-size:clamp(16px,4.2vw,20px); }
-  .choices{ display:grid; gap:1vh; margin-top:1vh; }
-  .choice{ border:.35vw solid #ccc; background:#111; color:#fff; border-radius:3.2vw; padding:1.1vh 1.6vw; text-align:left; font-size:clamp(13px,3.2vw,16px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .choice.correct{ background:#2e7d32; }
-  .choice.wrong{ background:#b71c1c; }
-  .footer{ margin-top:1vh; display:flex; gap:min(2vw,12px); }
-  .btn{ border:none; background:#111; color:#fff; border-radius:var(--r); padding:1.0vh 1.4vw; font-size:clamp(13px,3.2vw,16px); }
-  .btn:disabled{ opacity:.6; }
+  *{box-sizing:border-box} html,body{margin:0;padding:0;background:#000;color:#fff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif}
+  .wrap{min-height:100svh;display:flex;flex-direction:column;max-width:960px;margin:0 auto;padding:3vw}
+  h1{margin:.2rem 0 1rem;font-size:clamp(16px,4.5vw,22px)}
+  .stage{position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:12px;overflow:hidden}
+  .mask-top{position:absolute;left:0;right:0;top:0;height:15%;background:#000;pointer-events:none}
+  .overlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.55);z-index:2}
+  .overlay button,.bar button{border:none;background:#fff;color:#000;border-radius:12px;padding:10px 16px;font-weight:700;cursor:pointer}
+  .loading{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.35);z-index:1}
+  .bar{display:flex;gap:12px;margin-top:10px}
+  .msg{opacity:.8;font-size:.9rem;margin-left:auto}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>🎵 K-Pop MV Guess</h1>
-
-  <div class="hud">
-    <div class="pill">⏱ <span id="time">60</span>s</div>
-    <div class="pill">✅ <span id="correct">0</span></div>
-    <div class="pill">❓ <span id="questions">0</span></div>
-  </div>
+  <h1>🎵 K-Pop Random MV Player</h1>
 
   <div class="stage">
-    <div id="player" style="position:absolute; inset:0;"></div>
+    <div id="player" style="position:absolute;inset:0"></div>
     <div class="mask-top"></div>
-    <div id="loading" class="loading">Loading question…</div>
-    <div id="tap" class="tap"><button id="tapBtn">Tap to start</button></div>
+    <div id="loading" class="loading"><div>Loading…</div></div>
+    <div id="tap" class="overlay"><button id="tapBtn">Tap to start</button></div>
   </div>
 
-  <div id="choices" class="choices"></div>
-
-  <div class="footer">
-    <button id="startBtn" class="btn">Start 60s</button>
-    <button id="nextBtn"  class="btn" disabled>Next</button>
+  <div class="bar">
+    <button id="nextBtn">Next MV</button>
+    <span id="title" class="msg"></span>
   </div>
 </div>
 
 <!-- YouTube IFrame API -->
 <script src="https://www.youtube.com/iframe_api"></script>
 <script>
-/* ====== CONFIG (put your key here) ====== */
+/** 1) Put your YouTube Data API v3 key here **/
 const YT_API_KEY = "AIzaSyDBB3J-vwLYe8Enbmi6SmNCB5NW4QJv5Dc";
 
-/* ====== State ====== */
-let player, playerReady=false, userGesture=false;
-let timeLeft = 60, timerId = null;
-let totalQuestions = 0, totalCorrect = 0;
-let current = null; // {videoId, t, correctTitle, options[4], correctIndex}
-let recentVideoIds = []; // avoid immediate repeats
-const RECENT_LIMIT = 40;
+/** 2) Minimal state **/
+let player, ready=false, userGesture=false;
+let recent = []; const RECENT_MAX = 40;
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+const shuffle = a => {const x=a.slice(); for(let i=x.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [x[i],x[j]]=[x[j],x[i]]} return x;};
+function showLoading(on){ $("loading").style.display = on ? "flex" : "none"; }
+function pushRecent(id){ recent.push(String(id)); if(recent.length>RECENT_MAX) recent.shift(); }
 
-/* ====== Utils ====== */
-const sleep = ms => new Promise(r => setTimeout(r,ms));
-const shuffle = a => { const x=a.slice(); for(let i=x.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [x[i],x[j]]=[x[j],x[i]]} return x; };
-const clamp = (x,a,b)=> Math.max(a, Math.min(b, x));
-const norm  = s => (s||"").toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g,"");
-const $id   = id => document.getElementById(id);
-function setHUD(){ $id("time").textContent=timeLeft; $id("correct").textContent=totalCorrect; $id("questions").textContent=totalQuestions; }
-function showLoading(on){ $id("loading").style.display = on?"flex":"none"; }
-function pushRecent(id){ recentVideoIds.push(String(id)); if(recentVideoIds.length>RECENT_LIMIT) recentVideoIds.shift(); }
+/** 3) Fallback pool (used if API fails) **/
+const FALLBACK = shuffle([
+  {id:"IHNzOHi8sJs", title:"BLACKPINK – DDU-DU DDU-DU"},
+  {id:"gdZLi9oWNZg", title:"BLACKPINK – How You Like That"},
+  {id:"gOsM-DYAEhY", title:"TWICE – Feel Special"},
+  {id:"fE2h3lGlOsk", title:"ITZY – WANNABE"},
+  {id:"eXbu8dD1zNI", title:"IVE – I AM"},
+  {id:"sVTy_wmn5SU", title:"NewJeans – Super Shy"},
+  {id:"wTOP-nRZ5Jk", title:"SEVENTEEN – Super"},
+  {id:"WPdWvnAAurg", title:"LE SSERAFIM – ANTIFRAGILE"},
+  {id:"ry3S5H3p8wE", title:"aespa – Savage"}
+]);
 
-/* ====== YouTube Player ====== */
+/** 4) IFrame API hook **/
 function onYouTubeIframeAPIReady(){
   player = new YT.Player("player", {
-    host:"https://www.youtube.com",
-    width:"100%", height:"100%", videoId:"",
-    playerVars:{ origin: location.origin, controls:0, modestbranding:1, rel:0, playsinline:1, fs:0, disablekb:1, iv_load_policy:3, mute:1, autoplay:1 },
+    host: "https://www.youtube.com",
+    width:"100%", height:"100%",
+    videoId:"",
+    playerVars:{
+      origin: location.origin,
+      autoplay: 1, mute: 1, // mute allows autoplay on iOS
+      playsinline: 1, controls: 1, rel: 0, modestbranding: 1
+    },
     events:{
-      onReady: () => { playerReady = true; tryStart(); },
-      onError: () => { // on playback error → just move to next question
-        startRound();
+      onReady: () => { ready = true; maybeAutostart(); },
+      onError: () => { // skip problematic video
+        playRandomFromFallback();
       }
     }
   });
 }
 
-/* ====== API helpers ====== */
-async function gapi(url){
-  const res = await fetch(url);
-  if(res.ok) return res.json();
-  let msg = `HTTP ${res.status}`;
-  try {
-    const j = await res.json();
-    if (j?.error?.message) msg += ` · ${j.error.message}`;
-  } catch {}
-  throw new Error(msg);
+/** 5) Try to autoplay; on iOS show tap overlay **/
+function maybeAutostart(){
+  const isiOS = /(iPhone|iPad|iPod)/i.test(navigator.userAgent);
+  if (isiOS && !userGesture) {
+    $("tap").style.display = "flex";
+  } else {
+    nextRandom();
+  }
 }
 
-/* ====== 1) Random search a random K-pop MV, pause at random moment ====== */
-async function getRandomKpopQuestion(){
-  // Search: embeddable + syndicated, avoid shorts, wide query
-  const search = new URL("https://www.googleapis.com/youtube/v3/search");
-  search.searchParams.set("key", YT_API_KEY);
-  search.searchParams.set("part", "snippet");
-  search.searchParams.set("type", "video");
-  search.searchParams.set("maxResults", "50");
-  search.searchParams.set("videoEmbeddable", "true");
-  search.searchParams.set("videoSyndicated", "true");
-  search.searchParams.set("videoDuration", "medium,long");
-  search.searchParams.set("q", "K-Pop official MV 공식 뮤직비디오 아이돌 K-POP");
-  const sJson = await gapi(search.toString());
+/** 6) Fetch a random K-Pop MV (embeddable, non-shorts); fallback if needed **/
+async function fetchRandomKpop(){
+  // Broad query to maximize success
+  const u = new URL("https://www.googleapis.com/youtube/v3/search");
+  u.searchParams.set("key", YT_API_KEY);
+  u.searchParams.set("part","snippet");
+  u.searchParams.set("type","video");
+  u.searchParams.set("maxResults","50");
+  u.searchParams.set("videoEmbeddable","true");
+  u.searchParams.set("videoSyndicated","true");
+  u.searchParams.set("videoDuration","medium,long");
+  u.searchParams.set("q","K-Pop official MV 공식 뮤직비디오 아이돌 K-POP");
 
-  // look like MV filter
+  let sJson;
+  try{
+    const res = await fetch(u.toString());
+    if(!res.ok) throw new Error("search HTTP "+res.status);
+    sJson = await res.json();
+  }catch(e){
+    console.warn("search failed:", e);
+    return null;
+  }
+
+  // Basic MV heuristics
   const looksLikeMV = (t="",d="",c="")=>{
     const IN = /(official(?!\s*audio)|music\s*video|mv|공식|뮤직비디오|官方|完整版)/i.test(t)
             || /(official(?!\s*audio)|music\s*video|mv|공식|뮤직비디오|官方)/i.test(d)
@@ -128,151 +126,83 @@ async function getRandomKpopQuestion(){
   };
 
   let prelim = (sJson.items||[])
-    .map(i => ({ id:i.id?.videoId, title:i.snippet?.title||"", desc:i.snippet?.description||"", channel:i.snippet?.channelTitle||"" }))
-    .filter(v => v.id && looksLikeMV(v.title,v.desc,v.channel) && !recentVideoIds.includes(v.id));
+    .map(i=>({ id:i.id?.videoId, title:i.snippet?.title||"", desc:i.snippet?.description||"", ch:i.snippet?.channelTitle||"" }))
+    .filter(v => v.id && !recent.includes(v.id) && looksLikeMV(v.title,v.desc,v.ch));
 
-  if (!prelim.length) throw new Error("No candidates");
+  if (!prelim.length) return null;
 
-  // Fetch durations + embeddable/region
+  // Confirm playable & duration
   const ids = prelim.map(v=>v.id).join(",");
-  const videos = new URL("https://www.googleapis.com/youtube/v3/videos");
-  videos.searchParams.set("key", YT_API_KEY);
-  videos.searchParams.set("part", "contentDetails,snippet,status,contentRating");
-  videos.searchParams.set("id", ids);
-  const vJson = await gapi(videos.toString());
+  const v = new URL("https://www.googleapis.com/youtube/v3/videos");
+  v.searchParams.set("key", YT_API_KEY);
+  v.searchParams.set("part","contentDetails,status,snippet,contentRating");
+  v.searchParams.set("id", ids);
 
-  const isoToSec = iso => { const m = (iso||"").match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/); if(!m) return 0; return (+m[1]||0)*3600+(+m[2]||0)*60+(+m[3]||0); };
-  const region = (Intl?.DateTimeFormat?.().resolvedOptions?.().locale||"en-US").split("-").pop()?.toUpperCase() || "TW";
-
-  let pool = (vJson.items||[]).map(v=>{
-    const dur = isoToSec(v.contentDetails?.duration);
-    const rr = v.contentDetails?.regionRestriction || {};
-    const emb = v.status?.embeddable !== false;
-    const age = (v.contentRating?.ytRating||"") === "ytAgeRestricted";
-    const blocked = Array.isArray(rr.blocked) ? rr.blocked : [];
-    const allowed = Array.isArray(rr.allowed) ? rr.allowed : null;
-    const regionOK = (!blocked.includes(region)) && (!allowed || allowed.includes(region));
-    return { id:v.id, duration:dur, title:v.snippet?.title||"", channel:v.snippet?.channelTitle||"", embeddable:emb, regionOK, age };
-  }).filter(x => x.duration >= 120 && x.embeddable && x.regionOK && !x.age);
-
-  if (!pool.length) throw new Error("No playable");
-
-  // pick one correct
-  const correct = pool[Math.floor(Math.random()*pool.length)];
-  const correctTitle = correct.title;
-
-  // 2) Build four options: 1 correct + 3 incorrect (titles only)
-  const distractors = shuffle(pool.filter(x => x.id !== correct.id)).slice(0,3).map(x=>x.title);
-  const options = shuffle([correctTitle, ...distractors]);
-  const correctIndex = options.findIndex(t => norm(t) === norm(correctTitle));
-
-  // random time = 5%~95% of duration
-  const start = Math.floor(correct.duration*0.05);
-  const end   = Math.ceil (correct.duration*0.95);
-  const t = clamp(Math.floor(start + Math.random()*(end-start)), 1, Math.max(1, correct.duration-1));
-
-  return { videoId:correct.id, t, correctTitle, options, correctIndex };
-}
-
-/* ====== 2) Render choices & handle answer ====== */
-function renderChoices(q){
-  const box = $id("choices");
-  box.innerHTML = "";
-  q.options.forEach((title, i)=>{
-    const btn = document.createElement("button");
-    btn.className = "choice";
-    btn.textContent = `${String.fromCharCode(65+i)}. ${title}`;
-    btn.onclick = () => choose(i, btn);
-    box.appendChild(btn);
-  });
-  $id("nextBtn").disabled = true;
-}
-function choose(i, btn){
-  // disable all
-  [...document.querySelectorAll(".choice")].forEach(b => b.disabled = true);
-  if (i === current.correctIndex){
-    totalCorrect++;
-    btn.classList.add("correct");
-  } else {
-    btn.classList.add("wrong");
-    const okBtn = document.querySelectorAll(".choice")[current.correctIndex];
-    okBtn.classList.add("correct");
-  }
-  setHUD();
-  $id("nextBtn").disabled = false;
-}
-
-/* ====== 3) 60-second game loop ====== */
-function startGame(){
-  if (!playerReady){ alert("YouTube is loading, try again in a second."); return; }
-  userGesture = true;
-  // reset
-  timeLeft = 60; totalCorrect = 0; totalQuestions = 0; setHUD();
-  if (timerId) clearInterval(timerId);
-  timerId = setInterval(()=>{
-    timeLeft--; setHUD();
-    if (timeLeft <= 0){
-      clearInterval(timerId); timerId = null;
-      alert(`Time's up! ✅ Correct: ${totalCorrect} / Questions: ${totalQuestions}`);
-      $id("nextBtn").disabled = true;
-    }
-  }, 1000);
-  startRound();
-}
-
-async function startRound(){
-  if (timeLeft <= 0) return;
-  showLoading(true);
   try{
-    current = await getRandomKpopQuestion();
-    totalQuestions++; setHUD();
-    pushRecent(current.videoId);
+    const res = await fetch(v.toString());
+    if(!res.ok) throw new Error("videos HTTP "+res.status);
+    const j = await res.json();
 
-    // load, jump, pause
-    player.loadVideoById(current.videoId);
-    let controlled = false;
+    const isoToSec = iso => {const m=(iso||"").match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/); if(!m)return 0; return (+m[1]||0)*3600+(+m[2]||0)*60+(+m[3]||0);}
+    const myCC = (Intl?.DateTimeFormat?.().resolvedOptions?.().locale||"en-US").split("-").pop()?.toUpperCase() || "TW";
+
+    let pool = (j.items||[]).map(x=>{
+      const dur = isoToSec(x.contentDetails?.duration);
+      const rr = x.contentDetails?.regionRestriction || {};
+      const emb = x.status?.embeddable !== false;
+      const age = (x.contentRating?.ytRating||"") === "ytAgeRestricted";
+      const blocked = Array.isArray(rr.blocked)? rr.blocked : [];
+      const allowed = Array.isArray(rr.allowed)? rr.allowed : null;
+      const regionOK = (!blocked.includes(myCC)) && (!allowed || allowed.includes(myCC));
+      return { id:x.id, title:x.snippet?.title||"", embeddable:emb, regionOK, age, duration:dur };
+    }).filter(z => z.embeddable && z.regionOK && !z.age && z.duration >= 120);
+
+    if (!pool.length) return null;
+    return pool[Math.floor(Math.random()*pool.length)];
+  }catch(e){
+    console.warn("videos failed:", e);
+    return null;
+  }
+}
+
+/** 7) Playback helpers **/
+async function nextRandom(){
+  if (!ready) return;
+  showLoading(true);
+  $("title").textContent = "";
+  try{
+    let pick = await fetchRandomKpop();
+    if (!pick) {
+      // Fallback
+      pick = FALLBACK.find(v => !recent.includes(v.id)) || FALLBACK[Math.floor(Math.random()*FALLBACK.length)];
+    }
+    player.loadVideoById(pick.id);
+    $("title").textContent = pick.title || "K-Pop MV";
+    pushRecent(pick.id);
+
+    // Nudge play on iOS until it starts
     for (let i=0;i<30;i++){
-      const st = player.getPlayerState?.();
-      if (st === 1 || st === 2){
-        try {
-          player.seekTo(current.t, true);
-          setTimeout(()=> player.pauseVideo(), 120);
-        } catch {}
-        controlled = true;
-        break;
-      }
-      try { player.playVideo(); } catch {}
+      const s = player.getPlayerState?.();
+      if (s === 1) break;      // PLAYING
+      try{ player.playVideo(); }catch{}
       await sleep(100);
     }
-    if (!controlled && !userGesture){
-      // need a tap on iOS
-      $id("tap").style.display = "flex";
-      return;
-    }
-    renderChoices(current);
-  } catch(e){
-    // fail softly: try another question
-    console.warn(e);
-    await sleep(150);
-    return startRound();
-  } finally {
+  }finally{
     showLoading(false);
   }
 }
 
-/* ====== Autostart handling ====== */
-function tryStart(){
-  // On iOS, autoplay might be blocked before user gesture → show tap overlay.
-  const isiOS = /(iPhone|iPad|iPod)/i.test(navigator.userAgent);
-  if (isiOS) {
-    $id("tap").style.display = "flex";
-  }
+function playRandomFromFallback(){
+  const pick = FALLBACK.find(v => !recent.includes(v.id)) || FALLBACK[Math.floor(Math.random()*FALLBACK.length)];
+  $("title").textContent = pick.title;
+  pushRecent(pick.id);
+  try { player.loadVideoById(pick.id); } catch {}
 }
 
-/* ====== UI Events ====== */
-$id("startBtn").onclick = () => { $id("tap").style.display="none"; startGame(); };
-$id("nextBtn").onclick  = () => startRound();
-$id("tapBtn").onclick   = () => { userGesture = true; $id("tap").style.display="none"; startGame(); };
+/** 8) UI events **/
+$("nextBtn").onclick = () => nextRandom();
+$("tapBtn").onclick  = () => { userGesture = true; $("tap").style.display="none"; nextRandom(); };
+
 </script>
 </body>
 </html>
