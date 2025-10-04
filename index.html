@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <meta name="referrer" content="origin" />
-<title>K-Pop MV Guess — Fixed List + YouTube API</title>
+<title>K-Pop MV Guess — MVP (Static 20, Token-safe)</title>
 <style>
   *{box-sizing:border-box}
   html,body{margin:0;padding:0;background:#000;color:#fff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif}
@@ -53,218 +53,111 @@
 <!-- YouTube IFrame API -->
 <script src="https://www.youtube.com/iframe_api"></script>
 <script>
-/** === CONFIG: put your YouTube Data API v3 key here (optional) === */
-const YT_API_KEY = "AIzaSyDBB3J-vwLYe8Enbmi6SmNCB5NW4QJv5Dc";
-
-/** === Curated K-Pop MV list (titles are your answer space) === */
-const MV_LIST = [
-  { id: "fE2h3lGlOsk", title: "ITZY – WANNABE" },
-  { id: "js1CtxSY38I", title: "ITZY – CAKE" },
-  { id: "sVTy_wmn5SU", title: "NewJeans – Super Shy" },
-  { id: "ArmDp-zijuc", title: "NewJeans – OMG" },
-  { id: "gdZLi9oWNZg", title: "BLACKPINK – How You Like That" },
-  { id: "IHNzOHi8sJs", title: "BLACKPINK – DDU-DU DDU-DU" },
-  { id: "POe9SOEKotk", title: "BLACKPINK – Shut Down" },
-  { id: "WPdWvnAAurg", title: "LE SSERAFIM – ANTIFRAGILE" },
-  { id: "7UqJ2B6V3Fk", title: "LE SSERAFIM – UNFORGIVEN" },
-  { id: "ry3S5H3p8wE", title: "aespa – Savage" },
-  { id: "4TWR90KJl84", title: "aespa – Spicy" },
-  { id: "HgzGwKwLmgM", title: "TWICE – FANCY" },
-  { id: "kOHB85vDuow", title: "TWICE – Feel Special" },
-  { id: "i0p1bmr0EmE", title: "TWICE – MORE & MORE" },
-  { id: "wTOP-nRZ5Jk", title: "SEVENTEEN – Super" },
-  { id: "eXbu8dD1zNI", title: "IVE – I AM" },
-  { id: "Y8JFxS1HlDo", title: "IVE – After LIKE" },
-  { id: "xoVJKj8lcNQ", title: "IVE – LOVE DIVE" },
-  { id: "pSUydWEqKwE", title: "(G)I-DLE – TOMBOY" },
-  { id: "7GqClqvlObY", title: "(G)I-DLE – Queencard" },
+/* ===== Static curated K-pop MV pool (20) =====
+   If any ID fails to play/embeds in your region, it will be skipped for that round.
+*/
+const MV_POOL = [
+  { id:"fE2h3lGlOsk", title:"ITZY – WANNABE" },
+  { id:"js1CtxSY38I", title:"ITZY – CAKE" },
+  { id:"sVTy_wmn5SU", title:"NewJeans – Super Shy" },
+  { id:"ArmDp-zijuc", title:"NewJeans – OMG" },
+  { id:"gdZLi9oWNZg", title:"BLACKPINK – How You Like That" },
+  { id:"IHNzOHi8sJs", title:"BLACKPINK – DDU-DU DDU-DU" },
+  { id:"POe9SOEKotk", title:"BLACKPINK – Shut Down" },
+  { id:"WPdWvnAAurg", title:"LE SSERAFIM – ANTIFRAGILE" },
+  { id:"7UqJ2B6V3Fk", title:"LE SSERAFIM – UNFORGIVEN" },
+  { id:"4TWR90KJl84", title:"aespa – Spicy" },
+  { id:"Z8Z51no1TD0", title:"aespa – Drama" },
+  { id:"kOHB85vDuow", title:"TWICE – Feel Special" },
+  { id:"c7rCyll5AeY", title:"TWICE – Talk that Talk" },
+  { id:"i0p1bmr0EmE", title:"TWICE – MORE & MORE" },
+  { id:"wTOP-nRZ5Jk", title:"SEVENTEEN – Super" },
+  { id:"eXbu8dD1zNI", title:"IVE – I AM" },
+  { id:"Y8JFxS1HlDo", title:"IVE – After LIKE" },
+  { id:"xoVJKj8lcNQ", title:"IVE – LOVE DIVE" },
+  { id:"pSUydWEqKwE", title:"(G)I-DLE – TOMBOY" },
+  { id:"7GqClqvlObY", title:"(G)I-DLE – Queencard" }
 ];
 
-/** === State === */
-let player, ready=false, userGesture=false;
+/* ===== State & utilities ===== */
+let player, playerReady=false;
+let activeRoundId = 0;       // token to cancel stale rounds
 let timeLeft=60, timerId=null;
 let totalQuestions=0, totalCorrect=0;
-let current=null; // {qid, videoId, duration, t, options:[{text,correct}], correctIndex}
-let roundToken = 0; // prevents race/mismatch
-const durations = {}; // id -> seconds (filled from API or fallback)
+let seenIds = new Set();     // avoid repeats within a run
 
 const $ = id => document.getElementById(id);
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
-const shuffle = a => {const x=a.slice(); for(let i=x.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [x[i],x[j]]=[x[j],x[i]]} return x;};
 const clamp = (x,a,b)=>Math.max(a,Math.min(b,x));
 function setHUD(){ $("time").textContent=timeLeft; $("correct").textContent=totalCorrect; $("questions").textContent=totalQuestions; }
 function showLoading(on){ $("loading").style.display = on?"flex":"none"; }
+function shuffle(a){ const x=a.slice(); for(let i=x.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [x[i],x[j]]=[x[j],x[i]] } return x; }
 
-/** === IFrame API === */
+/* ===== IFrame API ===== */
 function onYouTubeIframeAPIReady(){
   player = new YT.Player("player", {
     host:"https://www.youtube.com",
     width:"100%", height:"100%", videoId:"",
     playerVars:{ origin:location.origin, autoplay:1, mute:1, playsinline:1, controls:0, rel:0, modestbranding:1 },
     events:{
-      onReady: () => { ready=true; maybeAutostart(); },
-      onError: () => {
-        // Soft-skip: just start another round (token prevents mismatches)
-        safeStartRound();
-      }
+      onReady: () => { playerReady=true; maybeShowTap(); },
+      onError: () => { /* don't start a new round here; token logic will handle */ }
     }
   });
 }
-function maybeAutostart(){
+function maybeShowTap(){
   const isiOS = /(iPhone|iPad|iPod)/i.test(navigator.userAgent);
-  if (isiOS && !userGesture) $("tap").style.display="flex";
+  if (isiOS) $("tap").style.display="flex";
 }
 
-/** === Optional: fetch real durations for MV_LIST === */
-const isoToSec = iso => {const m=(iso||"").match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/); if(!m)return 0; return (+m[1]||0)*3600+(+m[2]||0)*60+(+m[3]||0);};
-async function primeDurations(){
-  // prefill with a sane default so game works without key
-  MV_LIST.forEach(v => { if(!(v.id in durations)) durations[v.id] = 200; });
-
-  if (!YT_API_KEY || /YOUR_YOUTUBE_API_KEY_HERE/.test(YT_API_KEY)) return; // skip if no key
-  const ids = MV_LIST.map(v=>v.id).join(",");
-  const u = new URL("https://www.googleapis.com/youtube/v3/videos");
-  u.searchParams.set("key", YT_API_KEY);
-  u.searchParams.set("part","contentDetails");
-  u.searchParams.set("id", ids);
-
-  try{
-    const res = await fetch(u.toString());
-    if(!res.ok) throw new Error("videos HTTP "+res.status);
-    const j = await res.json();
-    (j.items||[]).forEach(x=>{
-      const sec = isoToSec(x.contentDetails?.duration);
-      if (sec > 30) durations[x.id] = sec;
-    });
-  }catch(e){
-    // ignore errors; fallback durations remain
-    console.warn("primeDurations failed:", e);
-  }
-}
-
-/** === Build ONE question from MV_LIST (no search) === */
+/* ===== Build one question from static pool ===== */
 function buildQuestion(){
-  // pick 1 correct
-  const correct = MV_LIST[Math.floor(Math.random()*MV_LIST.length)];
-  // ensure 3 unique distractors by title
-  const norm = s => (s||"").toLowerCase().replace(/\s+/g," ").trim();
-  const seen = new Set([norm(correct.title)]);
-  const distractors = [];
-  for (const cand of shuffle(MV_LIST)) {
-    if (cand.id === correct.id) continue;
-    const n = norm(cand.title);
-    if (seen.has(n)) continue;
-    seen.add(n); distractors.push(cand.title);
-    if (distractors.length >= 3) break;
-  }
-  // build option objects, then shuffle
-  const optionObjs = [
+  // pick 4 distinct ids, preferring ones not seen in this run
+  const candidates = shuffle(MV_POOL.filter(v=>!seenIds.has(v.id)));
+  const picks = (candidates.length>=4 ? candidates.slice(0,4) : shuffle(MV_POOL).slice(0,4));
+
+  const correct = picks[0];
+  const distractors = picks.slice(1);
+
+  // options as objects with a "correct" flag, then shuffle
+  const options = shuffle([
     { text: correct.title, correct: true },
-    ...distractors.slice(0,3).map(t => ({ text:t, correct:false }))
-  ];
-  const options = shuffle(optionObjs);
+    ...distractors.map(v => ({ text: v.title, correct: false }))
+  ]);
   const correctIndex = options.findIndex(o => o.correct);
 
-  // random time (5%~95%) using known or fallback duration
-  const dur = Math.max(60, durations[correct.id] || 200);
-  const start = Math.floor(dur*0.05);
-  const end   = Math.ceil (dur*0.95);
-  const t = clamp(Math.floor(start + Math.random()*(end-start)), 1, Math.max(1, dur-1));
+  // random second ~10–170 (no API duration; keep inside common MV range)
+  const t = Math.floor(10 + Math.random() * 160);
 
-  // return a question with a unique token
-  return { qid: ++roundToken, videoId: correct.id, duration: dur, t, options, correctIndex };
+  return { rid: activeRoundId, videoId: correct.id, t, options, correctIndex };
 }
 
-/** === Safe round starter (uses token to avoid mismatches) === */
-async function safeStartRound(){
-  if (timeLeft<=0) return;
-  showLoading(true);
-
-  // Build question & remember its token
-  const q = buildQuestion();
-  const myToken = q.qid;
-  current = q;
-
-  try{
-    // Load video, seek to random second, then pause
-    player.loadVideoById(q.videoId);
-
-    // Try to gain control within ~3.5s
-    let controlled = false;
-    for (let i=0;i<35;i++){
-      // if another round started, abort quietly
-      if (myToken !== roundToken) return;
-      const st = player.getPlayerState?.();
-      if (st===1 || st===2){ // PLAYING / PAUSED
-        try{
-          player.seekTo(q.t, true);
-          setTimeout(()=> { if (myToken===roundToken) player.pauseVideo(); }, 120);
-        }catch{}
-        controlled=true; break;
-      }
-      try{ player.playVideo(); }catch{}
-      await sleep(100);
+/* ===== Load & freeze with token-awareness ===== */
+async function loadAndFreeze(videoId, t, rid){
+  try { player.loadVideoById(videoId); } catch {}
+  const start = Date.now();
+  while (Date.now() - start < 3500) {
+    if (rid !== activeRoundId) return false; // a newer round started
+    const st = player.getPlayerState?.();
+    if (st === 1 || st === 2){ // PLAYING / PAUSED
+      try{
+        player.seekTo(t, true);
+        setTimeout(()=> { if (rid === activeRoundId) player.pauseVideo(); }, 120);
+      }catch{}
+      return true;
     }
-    if (!controlled) {
-      // If still not controlled (iOS gesture needed), show tap and exit
-      if (!userGesture) { $("tap").style.display="flex"; return; }
-    }
-
-    // Only render if this question is still current
-    if (myToken === roundToken) {
-      renderChoices(q);
-      totalQuestions++; setHUD();
-    }
-  } finally {
-    if (myToken === roundToken) showLoading(false);
+    try{ player.playVideo(); }catch{}
+    await sleep(100);
   }
+  return false; // timed out
 }
 
-/** === Render & answer (auto-advance) === */
-function renderChoices(q){
-  const box = $("choices");
-  box.innerHTML = "";
-  q.options.forEach((opt, i)=>{
-    const btn = document.createElement("button");
-    btn.className = "choice";
-    btn.textContent = `${String.fromCharCode(65+i)}. ${opt.text}`;
-    btn.onclick = () => choose(i, btn, q.qid); // pass token to verify
-    box.appendChild(btn);
-  });
-}
-
-function choose(i, btn, token){
-  // If a newer round already started, ignore click
-  if (token !== roundToken) return;
-
-  const buttons = [...document.querySelectorAll(".choice")];
-  buttons.forEach(b=> b.disabled = true);
-
-  const picked = current.options[i];
-  if (picked?.correct){
-    totalCorrect++;
-    btn.classList.add("correct");
-  } else {
-    btn.classList.add("wrong");
-    const okIdx = current.correctIndex;
-    if (buttons[okIdx]) buttons[okIdx].classList.add("correct");
-  }
-  setHUD();
-
-  // Auto-advance after short delay (token prevents overlap)
-  const myToken = token;
-  setTimeout(()=>{
-    // Only advance if this round is still the latest
-    if (myToken === roundToken && timeLeft>0) safeStartRound();
-  }, 800);
-}
-
-/** === Game control === */
+/* ===== Game loop ===== */
 function startGame(){
-  if (!ready){ alert("YouTube is loading — try again in a second."); return; }
-  userGesture = true; $("tap").style.display="none";
-
-  timeLeft = 60; totalQuestions = 0; totalCorrect = 0; setHUD();
+  if (!playerReady){ alert("YouTube is still loading — try again in a moment."); return; }
+  $("tap").style.display="none";
+  seenIds.clear();
+  totalQuestions=0; totalCorrect=0; timeLeft=60; setHUD();
   if (timerId) clearInterval(timerId);
   timerId = setInterval(()=>{
     timeLeft--; setHUD();
@@ -272,18 +165,65 @@ function startGame(){
       clearInterval(timerId); timerId=null;
       alert(`Time's up! ✅ Correct: ${totalCorrect} / Questions: ${totalQuestions}`);
     }
-  },1000);
-
-  // Start first round safely
-  safeStartRound();
+  }, 1000);
+  nextRound();
 }
 
-/** === UI events === */
-$("startBtn").onclick = () => startGame();
-$("tapBtn").onclick   = () => { userGesture=true; $("tap").style.display="none"; startGame(); };
+async function nextRound(){
+  if (timeLeft<=0) return;
+  const rid = ++activeRoundId;       // new token for this round
+  showLoading(true);
 
-/** === Boot === */
-primeDurations(); // best-effort; game works even if this fails
+  // Build question FIRST (prevents mismatches)
+  const q = buildQuestion();
+
+  // Render choices immediately for this token
+  renderChoices(q);
+
+  // Load the correct MV and freeze at t
+  const ok = await loadAndFreeze(q.videoId, q.t, rid);
+  showLoading(false);
+
+  if (!ok || rid !== activeRoundId) return; // cancelled or failed
+  totalQuestions++; setHUD();
+  seenIds.add(q.videoId);
+}
+
+/* ===== Render & answer (auto-advance) ===== */
+function renderChoices(q){
+  const box = $("choices");
+  box.innerHTML="";
+  q.options.forEach((opt, i)=>{
+    const btn = document.createElement("button");
+    btn.className = "choice";
+    btn.textContent = `${String.fromCharCode(65+i)}. ${opt.text}`;
+    btn.onclick = () => {
+      // ignore clicks from stale rounds
+      if (q.rid !== activeRoundId) return;
+
+      const buttons = [...document.querySelectorAll(".choice")];
+      buttons.forEach(b=> b.disabled=true);
+
+      if (opt.correct){
+        totalCorrect++;
+        btn.classList.add("correct");
+      }else{
+        btn.classList.add("wrong");
+        const okBtn = buttons[q.options.findIndex(o=>o.correct)];
+        if (okBtn) okBtn.classList.add("correct");
+      }
+      setHUD();
+
+      // auto-advance after a short highlight
+      setTimeout(()=>{ if (q.rid === activeRoundId && timeLeft>0) nextRound(); }, 700);
+    };
+    box.appendChild(btn);
+  });
+}
+
+/* ===== UI ===== */
+$("startBtn").onclick = () => startGame();
+$("tapBtn").onclick   = () => startGame();
 </script>
 </body>
 </html>
