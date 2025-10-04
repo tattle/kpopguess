@@ -1,371 +1,278 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <meta name="referrer" content="origin" />
-<title>K-Pop Guess · Ultra Stable</title>
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>K-Pop MV Guess — Minimal MVP</title>
 <style>
-  :root{ --gap:12px; --r:14px; }
+  :root { --r:14px; }
   *{ box-sizing:border-box; }
-  html,body{ margin:0; padding:0; background:#fff; color:#111; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Noto Sans,Arial,"PingFang TC","Heiti TC","Microsoft JhengHei",sans-serif; }
-  .wrap{ height:100svh; display:flex; flex-direction:column; padding: 2.4vw; max-width: 960px; margin: 0 auto; }
-  h1{ font-size: clamp(16px,4.4vw,20px); margin:0 0 .8vh 0; }
-  .hud{ display:grid; grid-template-columns:repeat(4,1fr); gap:min(1.0vw,8px); margin-top:.9vh; }
-  .pill{ background:#111; color:#fff; text-align:center; font-weight:800; border-radius:2.6vw;
-         padding:.9vh .6vw; font-size:clamp(12px,3.0vw,15px); line-height:1.05; }
-  .stage{ position:relative; width:100%; aspect-ratio:16/9; background:#000; border-radius: 3vw; margin-top: 1.0vh; overflow:hidden; }
+  html,body{ margin:0; padding:0; background:#fff; color:#111; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Noto Sans,Arial,sans-serif; }
+  .wrap{ height:100svh; max-width:960px; margin:0 auto; padding:3.2vw; display:flex; flex-direction:column; }
+  h1{ font-size:clamp(16px,4.4vw,20px); margin:0 0 .8vh 0; }
+  .hud{ display:grid; grid-template-columns:repeat(3,1fr); gap:min(2vw,12px); margin:.6vh 0 1vh; }
+  .pill{ background:#111; color:#fff; text-align:center; border-radius:3vw; padding:.9vh 1vw; font-weight:800; font-size:clamp(12px,3.2vw,15px); }
+  .stage{ position:relative; width:100%; aspect-ratio:16/9; background:#000; border-radius:3vw; overflow:hidden; }
   .mask-top{ position:absolute; left:0; right:0; top:0; height:15%; background:#000; pointer-events:none; }
-  .loading{ position:absolute; inset:0; display:none; align-items:center; justify-content:center; color:#fff; background:rgba(0,0,0,.6); font-size:clamp(14px,3.4vw,18px); z-index:3; }
-  .tapstart{ position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.5); z-index:4; }
-  .tapstart button{ font-size:clamp(16px,4.2vw,20px); padding:1.2vh 2.4vw; border-radius:14px; border:none; background:#fff; }
-  .choices{ display:grid; gap:.9vh; margin-top:.9vh; }
-  .choice{ text-align:left; border:.35vw solid #ccc; background:#111; color:#fff; border-radius:3.2vw;
-           font-size:clamp(13px,3.2vw,16px); padding:1.2vh 1.6vw; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .loading, .tap{ position:absolute; inset:0; display:none; align-items:center; justify-content:center; }
+  .loading{ color:#fff; background:rgba(0,0,0,.35); font-size:clamp(14px,3.6vw,18px); }
+  .tap{ background:rgba(0,0,0,.5); }
+  .tap button{ border:none; background:#fff; border-radius:12px; padding:1.2vh 2.2vw; font-size:clamp(16px,4.2vw,20px); }
+  .choices{ display:grid; gap:1vh; margin-top:1vh; }
+  .choice{ border:.35vw solid #ccc; background:#111; color:#fff; border-radius:3.2vw; padding:1.1vh 1.6vw; text-align:left; font-size:clamp(13px,3.2vw,16px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .choice.correct{ background:#2e7d32; }
   .choice.wrong{ background:#b71c1c; }
-  .foot{ display:flex; gap:min(2vw,12px); margin-top:.8vh; }
-  .btn{ border:none; background:#111; color:#fff; cursor:pointer; border-radius:var(--r); padding:1.0vh 1.4vw; font-size:clamp(13px,3.2vw,16px); }
-  .btn:disabled{ opacity:.6; cursor:not-allowed; }
+  .footer{ margin-top:1vh; display:flex; gap:min(2vw,12px); }
+  .btn{ border:none; background:#111; color:#fff; border-radius:var(--r); padding:1.0vh 1.4vw; font-size:clamp(13px,3.2vw,16px); }
+  .btn:disabled{ opacity:.6; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>🎵 K-Pop Guess（Auto Start · Ultra Stable）</h1>
+  <h1>🎵 K-Pop MV Guess</h1>
 
   <div class="hud">
-    <div class="pill" id="hudTime">⏱ 60s</div>
-    <div class="pill" id="hudScore">⭐ 0</div>
-    <div class="pill" id="hudCount">📊 0 題</div>
-    <div class="pill" id="hudAcc">🎯 0%</div>
+    <div class="pill">⏱ <span id="time">60</span>s</div>
+    <div class="pill">✅ <span id="correct">0</span></div>
+    <div class="pill">❓ <span id="questions">0</span></div>
   </div>
 
   <div class="stage">
     <div id="player" style="position:absolute; inset:0;"></div>
     <div class="mask-top"></div>
-    <div id="loading" class="loading">出題中…</div>
-    <div id="tapstart" class="tapstart"><button id="tapBtn">點一下開始</button></div>
+    <div id="loading" class="loading">Loading question…</div>
+    <div id="tap" class="tap"><button id="tapBtn">Tap to start</button></div>
   </div>
 
   <div id="choices" class="choices"></div>
 
-  <div class="foot">
-    <button id="nextBtn" class="btn" disabled>下一題</button>
-    <button id="restartBtn" class="btn" style="display:none;">再玩一次</button>
+  <div class="footer">
+    <button id="startBtn" class="btn">Start 60s</button>
+    <button id="nextBtn"  class="btn" disabled>Next</button>
   </div>
 </div>
 
+<!-- YouTube IFrame API -->
+<script src="https://www.youtube.com/iframe_api"></script>
 <script>
-const YT_API_KEY = "AIzaSyDBB3J-vwLYe8Enbmi6SmNCB5NW4QJv5Dc"; // ← 換成你的 Key
+/* ====== CONFIG (put your key here) ====== */
+const YT_API_KEY = "AIzaSyDBB3J-vwLYe8Enbmi6SmNCB5NW4QJv5Dc";
 
-let player, ytReady=false, playerReady=false, userGestureOK=false;
-let score=0, qCount=0, correctCount=0, wrongCount=0;
-let timeLeft=60, timer=null, gameOver=false;
-let current=null;
-let seen=[];
-let candidatePool=[];
-let useNoCookieHost = false; // 出錯時切換 youtube-nocookie
-const MAX_RETRY_PER_ROUND = 8;
+/* ====== State ====== */
+let player, playerReady=false, userGesture=false;
+let timeLeft = 60, timerId = null;
+let totalQuestions = 0, totalCorrect = 0;
+let current = null; // {videoId, t, correctTitle, options[4], correctIndex}
+let recentVideoIds = []; // avoid immediate repeats
+const RECENT_LIMIT = 40;
 
-/* 動態載入 IFrame API */
-function loadIframeAPI() {
-  return new Promise((resolve) => {
-    if (window.YT && window.YT.Player) return resolve();
-    const tag = document.createElement("script");
-    tag.src = "https://www.youtube.com/iframe_api";
-    window.onYouTubeIframeAPIReady = () => resolve();
-    document.head.appendChild(tag);
-  });
-}
+/* ====== Utils ====== */
+const sleep = ms => new Promise(r => setTimeout(r,ms));
+const shuffle = a => { const x=a.slice(); for(let i=x.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [x[i],x[j]]=[x[j],x[i]]} return x; };
+const clamp = (x,a,b)=> Math.max(a, Math.min(b, x));
+const norm  = s => (s||"").toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g,"");
+const $id   = id => document.getElementById(id);
+function setHUD(){ $id("time").textContent=timeLeft; $id("correct").textContent=totalCorrect; $id("questions").textContent=totalQuestions; }
+function showLoading(on){ $id("loading").style.display = on?"flex":"none"; }
+function pushRecent(id){ recentVideoIds.push(String(id)); if(recentVideoIds.length>RECENT_LIMIT) recentVideoIds.shift(); }
 
-/* 初始化 Player（支援 host 切換 + onError 移除失敗影片） */
-async function initPlayer(){
-  await loadIframeAPI();
-  ytReady = true;
-  const host = useNoCookieHost ? "https://www.youtube-nocookie.com" : "https://www.youtube.com";
-  if (player) { try { player.destroy(); } catch {} }
+/* ====== YouTube Player ====== */
+function onYouTubeIframeAPIReady(){
   player = new YT.Player("player", {
+    host:"https://www.youtube.com",
     width:"100%", height:"100%", videoId:"",
-    host,
-    playerVars:{
-      origin: location.origin,
-      enablejsapi: 1,
-      autoplay: 1,
-      mute: 1,
-      controls:0, modestbranding:1, rel:0, playsinline:1, fs:0, disablekb:1, iv_load_policy:3
-    },
+    playerVars:{ origin: location.origin, controls:0, modestbranding:1, rel:0, playsinline:1, fs:0, disablekb:1, iv_load_policy:3, mute:1, autoplay:1 },
     events:{
-      onReady: () => {
-        playerReady = true;
-        try { player.mute(); } catch {}
-        tryStartGame();
-      },
-      onError: (e) => {
-        // 2/5/101/150 → 先切到 nocookie host 再試；仍不行就剔除影片換下一支
-        if (!useNoCookieHost) {
-          useNoCookieHost = true;
-          initPlayer().then(()=> quickSkipToNextCandidate(true));
-        } else {
-          if (current?.videoId) {
-            candidatePool = candidatePool.filter(v => v.id !== current.videoId);
-          }
-          quickSkipToNextCandidate();
-        }
+      onReady: () => { playerReady = true; tryStart(); },
+      onError: () => { // on playback error → just move to next question
+        startRound();
       }
     }
   });
 }
 
-/* 工具 */
-const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
-const clamp = (x,a,b)=>Math.max(a,Math.min(b,x));
-const norm  = (s="")=>s.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g,"");
-const shuffle = (arr)=>{ const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]] } return a; };
-const updateHUD = ()=>{
-  document.getElementById("hudTime").textContent = `⏱ ${timeLeft}s`;
-  document.getElementById("hudScore").textContent = `⭐ ${score}`;
-  document.getElementById("hudCount").textContent = `📊 ${qCount} 題`;
-  const acc = qCount? Math.round((correctCount/qCount)*100):0;
-  document.getElementById("hudAcc").textContent = `🎯 ${acc}%`;
-};
-const showLoading = (on)=> document.getElementById("loading").style.display = on?"flex":"none";
-const pushSeen = (vid)=>{ seen.push(String(vid)); if(seen.length>40) seen.shift(); };
-
-/* 自動開始條件 */
-function tryStartGame(){
-  if (playerReady) {
-    const isiOS = /(iPhone|iPad|iPod)/i.test(navigator.userAgent);
-    if (!isiOS) {
-      startGame();
-    } else {
-      startGame(true);
-      setTimeout(()=>{
-        const st = player.getPlayerState?.();
-        if (st !== 1 && st !== 2) {
-          document.getElementById("tapstart").style.display = "flex";
-        }
-      }, 900);
-    }
-  }
+/* ====== API helpers ====== */
+async function gapi(url){
+  const res = await fetch(url);
+  if(res.ok) return res.json();
+  let msg = `HTTP ${res.status}`;
+  try {
+    const j = await res.json();
+    if (j?.error?.message) msg += ` · ${j.error.message}`;
+  } catch {}
+  throw new Error(msg);
 }
 
-/* 取候選池（可嵌入/可聯播/非短片/非限制 & 地區檢查） */
-async function fetchCandidatePool(){
-  const q = "K-Pop official MV 공식 뮤직비디오 아이돌 K-POP";
-  const searchURL = new URL("https://www.googleapis.com/youtube/v3/search");
-  searchURL.searchParams.set("key", YT_API_KEY);
-  searchURL.searchParams.set("part", "snippet");
-  searchURL.searchParams.set("type", "video");
-  searchURL.searchParams.set("videoCategoryId", "10");
-  searchURL.searchParams.set("maxResults", "50");
-  searchURL.searchParams.set("safeSearch", "moderate");
-  searchURL.searchParams.set("regionCode", "KR");
-  searchURL.searchParams.set("relevanceLanguage", "ko");
-  searchURL.searchParams.set("order", "relevance");
-  searchURL.searchParams.set("videoEmbeddable", "true");
-  searchURL.searchParams.set("videoSyndicated", "true");
-  searchURL.searchParams.set("videoDuration", "medium,long");
-  searchURL.searchParams.set("q", q);
-  searchURL.searchParams.set("fields", "items(id/videoId,snippet/title,snippet/description,snippet/channelTitle)");
+/* ====== 1) Random search a random K-pop MV, pause at random moment ====== */
+async function getRandomKpopQuestion(){
+  // Search: embeddable + syndicated, avoid shorts, wide query
+  const search = new URL("https://www.googleapis.com/youtube/v3/search");
+  search.searchParams.set("key", YT_API_KEY);
+  search.searchParams.set("part", "snippet");
+  search.searchParams.set("type", "video");
+  search.searchParams.set("maxResults", "50");
+  search.searchParams.set("videoEmbeddable", "true");
+  search.searchParams.set("videoSyndicated", "true");
+  search.searchParams.set("videoDuration", "medium,long");
+  search.searchParams.set("q", "K-Pop official MV 공식 뮤직비디오 아이돌 K-POP");
+  const sJson = await gapi(search.toString());
 
-  const sRes = await fetch(searchURL.toString());
-  if (!sRes.ok) throw new Error("YouTube search failed");
-  const sJson = await sRes.json();
-
-  const looksLikeMV = (title="",desc="",channel="")=>{
-    const INCLUDE = /(official(?!\s*audio)|music\s*video|mv|공식|뮤직비디오|官方|完整版)/i.test(title)
-                 || /(official(?!\s*audio)|music\s*video|mv|公|뮤직비디오|官方)/i.test(desc)
-                 || /official|vevo/i.test(channel);
-    const EX = /(lyric|lyrics|歌詞|자막|dance|practice|mirror|cover|reaction|reac|live|現場|舞台|직캠|fancam|teaser|trailer|audio|visualizer|shorts|topic)/i;
-    return INCLUDE && !EX.test(title) && !EX.test(desc) && !/topic/i.test(channel);
+  // look like MV filter
+  const looksLikeMV = (t="",d="",c="")=>{
+    const IN = /(official(?!\s*audio)|music\s*video|mv|공식|뮤직비디오|官方|完整版)/i.test(t)
+            || /(official(?!\s*audio)|music\s*video|mv|공식|뮤직비디오|官方)/i.test(d)
+            || /official|vevo/i.test(c);
+    const EX = /(lyric|lyrics|歌詞|자막|dance|practice|mirror|cover|reaction|live|現場|舞台|직캠|fancam|teaser|trailer|audio|visualizer|shorts|topic)/i;
+    return IN && !EX.test(t) && !EX.test(d) && !/topic/i.test(c);
   };
 
   let prelim = (sJson.items||[])
-    .map(i=>({ id:i.id?.videoId, title:i.snippet?.title||"", desc:i.snippet?.description||"", channel:i.snippet?.channelTitle||"" }))
-    .filter(v=>v.id && !seen.includes(v.id) && looksLikeMV(v.title,v.desc,v.channel));
+    .map(i => ({ id:i.id?.videoId, title:i.snippet?.title||"", desc:i.snippet?.description||"", channel:i.snippet?.channelTitle||"" }))
+    .filter(v => v.id && looksLikeMV(v.title,v.desc,v.channel) && !recentVideoIds.includes(v.id));
 
-  if(!prelim.length) throw new Error("沒有合適的 MV，請再試一次");
+  if (!prelim.length) throw new Error("No candidates");
 
-  // 詳情與限制檢查
+  // Fetch durations + embeddable/region
   const ids = prelim.map(v=>v.id).join(",");
-  const videosURL = new URL("https://www.googleapis.com/youtube/v3/videos");
-  videosURL.searchParams.set("key", YT_API_KEY);
-  videosURL.searchParams.set("part", "contentDetails,snippet,status,contentRating");
-  videosURL.searchParams.set("id", ids);
-  videosURL.searchParams.set("fields", "items(id,contentDetails/duration,contentDetails/regionRestriction,status/embeddable,snippet/title,snippet/channelTitle,contentRating/ytRating)");
+  const videos = new URL("https://www.googleapis.com/youtube/v3/videos");
+  videos.searchParams.set("key", YT_API_KEY);
+  videos.searchParams.set("part", "contentDetails,snippet,status,contentRating");
+  videos.searchParams.set("id", ids);
+  const vJson = await gapi(videos.toString());
 
-  const vRes = await fetch(videosURL.toString());
-  if (!vRes.ok) throw new Error("videos lookup failed");
-  const vJson = await vRes.json();
+  const isoToSec = iso => { const m = (iso||"").match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/); if(!m) return 0; return (+m[1]||0)*3600+(+m[2]||0)*60+(+m[3]||0); };
+  const region = (Intl?.DateTimeFormat?.().resolvedOptions?.().locale||"en-US").split("-").pop()?.toUpperCase() || "TW";
 
-  const isoToSec = (iso)=>{
-    const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-    if(!m) return 0; const h=+(m[1]||0), M=+(m[2]||0), s=+(m[3]||0); return h*3600+M*60+s;
-  };
-  const myCC = (Intl?.DateTimeFormat?.().resolvedOptions?.().locale || "en-US").split("-").pop()?.toUpperCase() || "TW";
-
-  let all = (vJson.items||[]).map(v=>{
-    const dur = isoToSec(v.contentDetails?.duration||"PT0S");
+  let pool = (vJson.items||[]).map(v=>{
+    const dur = isoToSec(v.contentDetails?.duration);
     const rr = v.contentDetails?.regionRestriction || {};
     const emb = v.status?.embeddable !== false;
-    const age = (v.contentRating?.ytRating || "") === "ytAgeRestricted";
+    const age = (v.contentRating?.ytRating||"") === "ytAgeRestricted";
     const blocked = Array.isArray(rr.blocked) ? rr.blocked : [];
     const allowed = Array.isArray(rr.allowed) ? rr.allowed : null;
-    const regionOK = (!blocked.includes(myCC)) && (!allowed || allowed.includes(myCC));
-    return { id:v.id, duration:dur, title:v.snippet?.title||"", channel:v.snippet?.channelTitle||"", embeddable: emb, regionOK, age };
-  })
-  .filter(x=> x.duration>=120 && x.embeddable && x.regionOK && !x.age);
+    const regionOK = (!blocked.includes(region)) && (!allowed || allowed.includes(region));
+    return { id:v.id, duration:dur, title:v.snippet?.title||"", channel:v.snippet?.channelTitle||"", embeddable:emb, regionOK, age };
+  }).filter(x => x.duration >= 120 && x.embeddable && x.regionOK && !x.age);
 
-  all = shuffle(all).slice(0,24);
-  if(!all.length) throw new Error("暫無可外嵌且在你地區可播放的 MV");
-  return all;
+  if (!pool.length) throw new Error("No playable");
+
+  // pick one correct
+  const correct = pool[Math.floor(Math.random()*pool.length)];
+  const correctTitle = correct.title;
+
+  // 2) Build four options: 1 correct + 3 incorrect (titles only)
+  const distractors = shuffle(pool.filter(x => x.id !== correct.id)).slice(0,3).map(x=>x.title);
+  const options = shuffle([correctTitle, ...distractors]);
+  const correctIndex = options.findIndex(t => norm(t) === norm(correctTitle));
+
+  // random time = 5%~95% of duration
+  const start = Math.floor(correct.duration*0.05);
+  const end   = Math.ceil (correct.duration*0.95);
+  const t = clamp(Math.floor(start + Math.random()*(end-start)), 1, Math.max(1, correct.duration-1));
+
+  return { videoId:correct.id, t, correctTitle, options, correctIndex };
 }
 
-/* 從候選池組題 */
-function buildQuestion(pool){
-  const pick = pool[Math.floor(Math.random()*pool.length)];
-  const answerTitle = pick.title;
-  const normKey = (t,a)=>`${norm(t)}|${norm(a)}`;
-  const target = normKey(pick.title, pick.channel);
-
-  const seenKey = new Set(), dist = [];
-  const pushU = (arr)=>{ for(const c of arr){ const k=normKey(c.title,c.channel); if(k===target||seenKey.has(k)) continue; seenKey.add(k); dist.push(c.title); if(dist.length>=3) break; } };
-  pushU(shuffle(pool));
-  if(dist.length<3) pushU(pool);
-  const choices = shuffle([answerTitle, ...dist.slice(0,3)]);
-  const correctIndex = choices.findIndex(t=>norm(t)===norm(answerTitle));
-
-  const start = Math.floor(pick.duration*0.05);
-  const end   = Math.ceil(pick.duration*0.95);
-  const t = clamp(Math.floor(start + Math.random()*(end-start)), 1, Math.max(1,pick.duration-1));
-
-  return { videoId:pick.id, t, duration:pick.duration, answerTitle, choices, correctIndex };
+/* ====== 2) Render choices & handle answer ====== */
+function renderChoices(q){
+  const box = $id("choices");
+  box.innerHTML = "";
+  q.options.forEach((title, i)=>{
+    const btn = document.createElement("button");
+    btn.className = "choice";
+    btn.textContent = `${String.fromCharCode(65+i)}. ${title}`;
+    btn.onclick = () => choose(i, btn);
+    box.appendChild(btn);
+  });
+  $id("nextBtn").disabled = true;
+}
+function choose(i, btn){
+  // disable all
+  [...document.querySelectorAll(".choice")].forEach(b => b.disabled = true);
+  if (i === current.correctIndex){
+    totalCorrect++;
+    btn.classList.add("correct");
+  } else {
+    btn.classList.add("wrong");
+    const okBtn = document.querySelectorAll(".choice")[current.correctIndex];
+    okBtn.classList.add("correct");
+  }
+  setHUD();
+  $id("nextBtn").disabled = false;
 }
 
-/* 出題（帶快速重試與 -1/3 狀態超時計時） */
+/* ====== 3) 60-second game loop ====== */
+function startGame(){
+  if (!playerReady){ alert("YouTube is loading, try again in a second."); return; }
+  userGesture = true;
+  // reset
+  timeLeft = 60; totalCorrect = 0; totalQuestions = 0; setHUD();
+  if (timerId) clearInterval(timerId);
+  timerId = setInterval(()=>{
+    timeLeft--; setHUD();
+    if (timeLeft <= 0){
+      clearInterval(timerId); timerId = null;
+      alert(`Time's up! ✅ Correct: ${totalCorrect} / Questions: ${totalQuestions}`);
+      $id("nextBtn").disabled = true;
+    }
+  }, 1000);
+  startRound();
+}
+
 async function startRound(){
-  if(gameOver) return;
+  if (timeLeft <= 0) return;
   showLoading(true);
   try{
-    if (!candidatePool.length) candidatePool = await fetchCandidatePool();
+    current = await getRandomKpopQuestion();
+    totalQuestions++; setHUD();
+    pushRecent(current.videoId);
 
-    let attempts = 0;
-    while (attempts < MAX_RETRY_PER_ROUND) {
-      attempts++;
-      const q = buildQuestion(candidatePool);
-      current = q; qCount++; updateHUD();
-
-      const ok = await tryLoadAndFreeze(q);
-      if (ok) {
-        renderChoices();
-        document.getElementById("nextBtn").disabled = true;
-        pushSeen(q.videoId);
+    // load, jump, pause
+    player.loadVideoById(current.videoId);
+    let controlled = false;
+    for (let i=0;i<30;i++){
+      const st = player.getPlayerState?.();
+      if (st === 1 || st === 2){
+        try {
+          player.seekTo(current.t, true);
+          setTimeout(()=> player.pauseVideo(), 120);
+        } catch {}
+        controlled = true;
         break;
-      } else {
-        candidatePool = candidatePool.filter(v => v.id !== q.videoId);
-        if (!candidatePool.length) candidatePool = await fetchCandidatePool();
       }
+      try { player.playVideo(); } catch {}
+      await sleep(100);
     }
-  }catch(e){
-    console.error(e);
-    alert(e.message || "出題失敗，請稍後重試");
-  }finally{
+    if (!controlled && !userGesture){
+      // need a tap on iOS
+      $id("tap").style.display = "flex";
+      return;
+    }
+    renderChoices(current);
+  } catch(e){
+    // fail softly: try another question
+    console.warn(e);
+    await sleep(150);
+    return startRound();
+  } finally {
     showLoading(false);
   }
 }
 
-/* 嘗試載入→跳秒→暫停；若 3 秒內都卡在 UNSTARTED/BUFFERING，視為失敗 */
-async function tryLoadAndFreeze(q){
-  try { player.loadVideoById(q.videoId); } catch {}
-  let controlled = false;
-  const startTs = Date.now();
-  for(let i=0;i<35;i++){
-    const st = player.getPlayerState?.();
-    if(st === 1 || st === 2){ // PLAYING / PAUSED
-      try {
-        player.seekTo(q.t, true);
-        setTimeout(()=> player.pauseVideo(), 120);
-        controlled = true;
-      } catch {}
-      break;
-    }
-    // 若太久都在 -1/3 視為失敗
-    if (Date.now() - startTs > 3000 && (st === -1 || st === 3 || st === 0)) {
-      return false;
-    }
-    try { player.playVideo(); } catch {}
-    await sleep(100);
+/* ====== Autostart handling ====== */
+function tryStart(){
+  // On iOS, autoplay might be blocked before user gesture → show tap overlay.
+  const isiOS = /(iPhone|iPad|iPod)/i.test(navigator.userAgent);
+  if (isiOS) {
+    $id("tap").style.display = "flex";
   }
-  return controlled;
 }
 
-/* onError / 超時時快速跳下一個候選 */
-function quickSkipToNextCandidate(resetHost=false){
-  showLoading(true);
-  if (current?.videoId) {
-    candidatePool = candidatePool.filter(v => v.id !== current.videoId);
-  }
-  setTimeout(()=> { startRound(); }, 50);
-}
-
-/* 四選一 / 判分 */
-function renderChoices(){
-  const el = document.getElementById("choices");
-  el.innerHTML = "";
-  current.choices.forEach((title, idx)=>{
-    const btn = document.createElement("button");
-    btn.className = "choice";
-    btn.textContent = `${String.fromCharCode(65+idx)}. ${title}`;
-    btn.title = title;
-    btn.onclick = () => choose(idx, btn);
-    el.appendChild(btn);
-  });
-}
-function choose(idx, btn){
-  [...document.querySelectorAll(".choice")].forEach(b=> b.disabled = true);
-  const correct = (idx === current.correctIndex);
-  if(correct){ score += 100; correctCount++; btn.classList.add("correct"); }
-  else{
-    wrongCount++; btn.classList.add("wrong");
-    const okBtn = document.querySelectorAll(".choice")[current.correctIndex];
-    okBtn.classList.add("correct");
-  }
-  updateHUD();
-  document.getElementById("nextBtn").disabled = false;
-}
-
-/* 遊戲控制 */
-function startGame(silent=false){
-  score=0; qCount=0; correctCount=0; wrongCount=0; timeLeft=60; gameOver=false;
-  candidatePool = [];
-  updateHUD();
-  if(timer) clearInterval(timer);
-  timer = setInterval(()=>{
-    timeLeft--; updateHUD();
-    if(timeLeft<=0){
-      clearInterval(timer); timer=null; gameOver=true;
-      alert(`時間到！分數 ${score}｜題數 ${qCount}｜正確 ${correctCount}｜錯誤 ${wrongCount}`);
-      document.getElementById("restartBtn").style.display = "inline-block";
-    }
-  },1000);
-  if (!silent) document.getElementById("restartBtn").style.display = "none";
-  startRound();
-}
-
-/* 事件 */
-document.getElementById("nextBtn").onclick  = () => startRound();
-document.getElementById("restartBtn").onclick = () => { startGame(); };
-document.getElementById("tapBtn").onclick = () => {
-  userGestureOK = true;
-  document.getElementById("tapstart").style.display = "none";
-  try { player.playVideo(); } catch{}
-  startRound();
-};
-
-/* 啟動 */
-initPlayer().then(() => tryStartGame());
+/* ====== UI Events ====== */
+$id("startBtn").onclick = () => { $id("tap").style.display="none"; startGame(); };
+$id("nextBtn").onclick  = () => startRound();
+$id("tapBtn").onclick   = () => { userGesture = true; $id("tap").style.display="none"; startGame(); };
 </script>
 </body>
 </html>
